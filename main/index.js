@@ -90,6 +90,368 @@ ipcMain.handle("LiteLoader.liuli.resetPending", () => {
     return { wipe: wipe };
 });
 
+
+/* ---------- macOS 布局设置持久化兜底（不依赖 Chromium localStorage） ----------
+ * 只接受布局/已发现菜单项两个已知结构，固定写入 data/liuli-dsh-theme/layout.json。
+ * 先落同目录临时文件再原子替换，防止异常退出留下半截 JSON。 */
+const LAYOUT_FILE = path.join(LIULI_DATA_DIR, "layout.json");
+const LAYOUT_MAX_BYTES = 128 * 1024;
+const LAYOUT_ARRAY_MAX = 300;
+
+function layoutStrings(value) {
+    if (!Array.isArray(value)) return [];
+    return value.slice(0, LAYOUT_ARRAY_MAX)
+        .filter(item => typeof item === "string")
+        .map(item => item.slice(0, 256));
+}
+function normalizeLayout(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const num = Number(value.barPinned);
+    return {
+        menuCompact: value.menuCompact === true,
+        menuOrder: layoutStrings(value.menuOrder),
+        barOrder: layoutStrings(value.barOrder),
+        barPinned: Number.isFinite(num) ? Math.max(0, Math.min(6, Math.round(num))) : 1,
+        navHidden: layoutStrings(value.navHidden),
+        titlebar: value.titlebar === "native" ? "native" : "float",
+        navPin: value.navPin === true
+    };
+}
+function normalizeSeen(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    return {
+        menu: layoutStrings(value.menu),
+        bar: layoutStrings(value.bar),
+        nav: layoutStrings(value.nav)
+    };
+}
+function readLayoutState() {
+    try {
+        if (!fs.existsSync(LAYOUT_FILE)) return { version: 1, layout: null, seen: null };
+        if (fs.statSync(LAYOUT_FILE).size > LAYOUT_MAX_BYTES) throw new Error("layout.json too large");
+        const data = JSON.parse(fs.readFileSync(LAYOUT_FILE, "utf8"));
+        if (!data || typeof data !== "object" || Array.isArray(data) || data.version !== 1)
+            throw new Error("invalid layout.json format");
+        return { version: 1, layout: normalizeLayout(data.layout), seen: normalizeSeen(data.seen) };
+    } catch (e) {
+        log("layout load failed: " + (e && e.message));
+        // 不自动覆盖损坏的文件；下次成功保存才会替换。
+        return { version: 1, layout: null, seen: null };
+    }
+}
+let layoutState = readLayoutState();
+function writeLayoutState(next) {
+    const json = JSON.stringify(next, null, 2) + "\n";
+    if (Buffer.byteLength(json, "utf8") > LAYOUT_MAX_BYTES) throw new Error("layout state too large");
+    fs.mkdirSync(LIULI_DATA_DIR, { recursive: true });
+    const tmp = LAYOUT_FILE + ".tmp-" + process.pid;
+    try {
+        fs.writeFileSync(tmp, json, { encoding: "utf8", mode: 0o600 });
+        fs.renameSync(tmp, LAYOUT_FILE);
+    } catch (e) {
+        try { fs.unlinkSync(tmp); } catch (_) {}
+        throw e;
+    }
+}
+ipcMain.handle("LiteLoader.liuli.layoutLoad", () => ({
+    ok: true,
+    layout: layoutState.layout,
+    seen: layoutState.seen
+}));
+ipcMain.handle("LiteLoader.liuli.layoutSave", (_event, kind, value) => {
+    if (kind !== "layout" && kind !== "seen") return { ok: false, error: "unsupported kind" };
+    const normalized = kind === "layout" ? normalizeLayout(value) : normalizeSeen(value);
+    if (!normalized) return { ok: false, error: "invalid payload" };
+    const next = { ...layoutState, [kind]: normalized };
+    try {
+        writeLayoutState(next);
+        layoutState = next;
+        return { ok: true };
+    } catch (e) {
+        log("layout save failed (" + kind + "): " + (e && e.message));
+        return { ok: false, error: String((e && e.message) || e) };
+    }
+});
+// 给「恢复全部默认」扩展留接口；只删 layout.json，不影响其他插件数据。
+ipcMain.handle("LiteLoader.liuli.layoutReset", () => {
+    try {
+        fs.rmSync(LAYOUT_FILE, { force: true });
+        layoutState = { version: 1, layout: null, seen: null };
+        return { ok: true };
+    } catch (e) {
+        log("layout reset failed: " + (e && e.message));
+        return { ok: false, error: String((e && e.message) || e) };
+    }
+});
+
+
+/* ---------- macOS 壁纸文件持久化：图片单独保存，元数据保持为小 JSON ----------
+ * Chromium localStorage 可跨窗口共享，但 QQ 在 macOS 的部分会话退出后会丢失。
+ * 本地存储结构：wallpaper.json + wallpaper-<sha256>.bin；只接受 data:image/...
+ * 固定文件名，不接受客户端传来的文件路径，避免通过 IPC 任意读写。 */
+const WP_CRYPTO = require("node:crypto");
+const WALLPAPER_META_FILE = path.join(LIULI_DATA_DIR, "wallpaper.json");
+const WALLPAPER_MAX_DATAURL_CHARS = 16 * 1024 * 1024;
+const WALLPAPER_MAX_IMAGE_BYTES = 12 * 1024 * 1024;
+const WALLPAPER_FILE_RE = /^wallpaper-[a-f0-9]{64}\.bin$/;
+
+function wallpaperFit(fit) {
+    return fit === "contain" || fit === "stretch" ? fit : "cover";
+}
+function wallpaperArea(area) {
+    if (!area || typeof area !== "object") return null;
+    const v = [area.x, area.y, area.w, area.h].map(Number);
+    if (!v.every(Number.isFinite)) return null;
+    if (v.some(n => n < 0 || n > 1) || v[0] + v[2] > 1.001 || v[1] + v[3] > 1.001) return null;
+    return { x: v[0], y: v[1], w: v[2], h: v[3] };
+}
+function parseWallpaperInput(data) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("invalid wallpaper state");
+    const fit = wallpaperFit(data.fit);
+    if (data.src == null || data.src === "") return { fit, area: null, image: null };
+    if (typeof data.src !== "string" || data.src.length > WALLPAPER_MAX_DATAURL_CHARS)
+        throw new Error("wallpaper dataURL too large or invalid");
+    const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(data.src);
+    if (!match) throw new Error("wallpaper must be a base64 JPEG/PNG/WebP dataURL");
+    const bytes = Buffer.from(match[2], "base64");
+    if (!bytes.length || bytes.length > WALLPAPER_MAX_IMAGE_BYTES) throw new Error("wallpaper image too large");
+    const hash = WP_CRYPTO.createHash("sha256").update(bytes).digest("hex");
+    return {
+        fit, area: wallpaperArea(data.area),
+        image: { bytes, mime: match[1], hash, file: "wallpaper-" + hash + ".bin" }
+    };
+}
+function readWallpaperFile() {
+    if (!fs.existsSync(WALLPAPER_META_FILE)) return { ok: true, exists: false, state: null };
+    try {
+        if (fs.statSync(WALLPAPER_META_FILE).size > 8192) throw new Error("wallpaper.json too large");
+        const meta = JSON.parse(fs.readFileSync(WALLPAPER_META_FILE, "utf8"));
+        if (!meta || meta.version !== 1) throw new Error("unsupported wallpaper metadata");
+        const fit = wallpaperFit(meta.fit);
+        if (!meta.file) return { ok: true, exists: true, state: { src: null, fit, area: null } };
+        if (typeof meta.file !== "string" || !WALLPAPER_FILE_RE.test(meta.file))
+            throw new Error("invalid wallpaper image filename");
+        if (!["image/jpeg", "image/png", "image/webp"].includes(meta.mime))
+            throw new Error("invalid wallpaper image MIME");
+        const imagePath = path.join(LIULI_DATA_DIR, meta.file);
+        const size = fs.statSync(imagePath).size;
+        if (!size || size > WALLPAPER_MAX_IMAGE_BYTES) throw new Error("wallpaper image size invalid");
+        const bytes = fs.readFileSync(imagePath);
+        const hash = WP_CRYPTO.createHash("sha256").update(bytes).digest("hex");
+        if (meta.file !== "wallpaper-" + hash + ".bin") throw new Error("wallpaper image checksum mismatch");
+        return {
+            ok: true, exists: true,
+            state: { src: "data:" + meta.mime + ";base64," + bytes.toString("base64"),
+                area: wallpaperArea(meta.area), fit }
+        };
+    } catch (e) {
+        log("wallpaper load failed: " + (e && e.message));
+        return { ok: false, exists: true, state: null, error: String((e && e.message) || e) };
+    }
+}
+let wallpaperFileState = readWallpaperFile();
+
+function writeWallpaperAtomic(destination, bytes) {
+    const temp = destination + ".tmp-" + process.pid;
+    try {
+        fs.writeFileSync(temp, bytes, { mode: 0o600 });
+        fs.renameSync(temp, destination);
+    } catch (e) {
+        try { fs.rmSync(temp, { force: true }); } catch (_) {}
+        throw e;
+    }
+}
+function wallpaperNotify(exceptWebContents) {
+    for (const w of BrowserWindow.getAllWindows()) {
+        try {
+            const wc = w.webContents;
+            if (!wc.isDestroyed() && wc !== exceptWebContents) wc.send("LiteLoader.liuli.wallpaperChanged");
+        } catch (_) {}
+    }
+}
+function wallpaperCleanup(except) {
+    try {
+        for (const file of fs.readdirSync(LIULI_DATA_DIR)) {
+            if (WALLPAPER_FILE_RE.test(file) && file !== except)
+                fs.rmSync(path.join(LIULI_DATA_DIR, file), { force: true });
+        }
+    } catch (e) { log("wallpaper cleanup warning: " + (e && e.message)); }
+}
+ipcMain.handle("LiteLoader.liuli.wallpaperLoad", () => wallpaperFileState);
+ipcMain.handle("LiteLoader.liuli.wallpaperSave", (event, data) => {
+    try {
+        const next = parseWallpaperInput(data);
+        fs.mkdirSync(LIULI_DATA_DIR, { recursive: true });
+        if (next.image) {
+            const imagePath = path.join(LIULI_DATA_DIR, next.image.file);
+            if (!fs.existsSync(imagePath)) writeWallpaperAtomic(imagePath, next.image.bytes);
+        }
+        const metadata = {
+            version: 1, file: next.image ? next.image.file : null,
+            mime: next.image ? next.image.mime : null,
+            fit: next.fit, area: next.area, savedAt: new Date().toISOString()
+        };
+        writeWallpaperAtomic(WALLPAPER_META_FILE, Buffer.from(JSON.stringify(metadata, null, 2) + "\n"));
+        wallpaperFileState = {
+            ok: true, exists: true,
+            state: { src: next.image ? data.src : null, fit: next.fit, area: next.area }
+        };
+        wallpaperCleanup(next.image && next.image.file);
+        wallpaperNotify(event.sender);
+        log("wallpaper saved | image=" + !!next.image + " fit=" + next.fit +
+            " bytes=" + (next.image ? next.image.bytes.length : 0));
+        return { ok: true };
+    } catch (e) {
+        log("wallpaper save failed: " + (e && e.message));
+        return { ok: false, error: String((e && e.message) || e) };
+    }
+});
+ipcMain.handle("LiteLoader.liuli.wallpaperReset", (event) => {
+    try {
+        fs.rmSync(WALLPAPER_META_FILE, { force: true });
+        wallpaperCleanup(null);
+        wallpaperFileState = { ok: true, exists: false, state: null };
+        wallpaperNotify(event.sender);
+        return { ok: true };
+    } catch (e) {
+        log("wallpaper reset failed: " + (e && e.message));
+        return { ok: false, error: String((e && e.message) || e) };
+    }
+});
+
+/* ---------- macOS 外观 / 文字独立持久化 ----------
+ * 这四项原先只存在 localStorage，macOS QQ 部分会话重启会丢失。
+ * 用小 JSON 作权威存档，localStorage 仍负责运行时即时反馈和跨窗口 UI 同步。
+ * 只接收 4 个白名单键，不接受路径或任意数据；写入先落临时文件再原子替换。 */
+const APPEARANCE_FILE = path.join(LIULI_DATA_DIR, "appearance.json");
+const APPEARANCE_KEYS = Object.freeze([
+    "liuli-color-roles", "liuli-md-render", "liuli-font", "liuli-dsh-mode"
+]);
+const APPEARANCE_MAX_BYTES = 8 * 1024;
+function validateAppearance(key, raw) {
+    if (!APPEARANCE_KEYS.includes(key)) throw new Error("unsupported appearance key");
+    if (raw === null) return null; // 明确恢复对应项的默认值
+    if (typeof raw !== "string") throw new Error("appearance value must be a string or null");
+    if (key === "liuli-md-render") {
+        if (raw !== "0" && raw !== "1") throw new Error("invalid markdown setting");
+        return raw;
+    }
+    if (key === "liuli-dsh-mode") {
+        if (!["auto", "dark", "light"].includes(raw)) throw new Error("invalid theme mode");
+        return raw;
+    }
+    if (key === "liuli-font") {
+        if (raw.length > 64 || /["'\\;{}<>\x00-\x1f]/.test(raw)) throw new Error("invalid font name");
+        return raw;
+    }
+    if (raw.length > 2048) throw new Error("color roles value too large");
+    let role;
+    try { role = JSON.parse(raw); } catch (_) { throw new Error("color roles is not valid JSON"); }
+    if (!role || typeof role !== "object" || Array.isArray(role)) throw new Error("invalid color roles");
+    const allowed = {
+        accent: ["primary", "secondary", "tertiary"],
+        selected: ["primary", "secondary", "tertiary"],
+        self: ["primary", "secondary", "tertiary", "solid", "surface", "inverse"],
+        others: ["primary", "secondary", "tertiary", "surface"]
+    };
+    const safe = {};
+    for (const [field, opts] of Object.entries(allowed)) {
+        if (Object.prototype.hasOwnProperty.call(role, field)) {
+            if (!opts.includes(role[field])) throw new Error("invalid color role: " + field);
+            safe[field] = role[field];
+        }
+    }
+    return JSON.stringify(safe);
+}
+function readAppearance() {
+    try {
+        if (!fs.existsSync(APPEARANCE_FILE)) return { exists: false, values: {} };
+        if (fs.statSync(APPEARANCE_FILE).size > APPEARANCE_MAX_BYTES) throw new Error("appearance.json too large");
+        const data = JSON.parse(fs.readFileSync(APPEARANCE_FILE, "utf8"));
+        if (!data || data.version !== 1 || !data.values || typeof data.values !== "object" || Array.isArray(data.values))
+            throw new Error("invalid appearance.json");
+        const values = {};
+        for (const key of APPEARANCE_KEYS) {
+            if (Object.prototype.hasOwnProperty.call(data.values, key))
+                values[key] = validateAppearance(key, data.values[key]);
+        }
+        return { exists: true, values };
+    } catch (e) {
+        log("appearance load failed: " + (e && e.message));
+        return { exists: true, values: {}, error: String((e && e.message) || e) };
+    }
+}
+let appearanceState = readAppearance();
+function writeAppearance(values) {
+    const body = JSON.stringify({ version: 1, values }, null, 2) + "\n";
+    if (Buffer.byteLength(body, "utf8") > APPEARANCE_MAX_BYTES) throw new Error("appearance too large");
+    fs.mkdirSync(LIULI_DATA_DIR, { recursive: true });
+    const tmp = APPEARANCE_FILE + ".tmp-" + process.pid;
+    try {
+        fs.writeFileSync(tmp, body, { encoding: "utf8", mode: 0o600 });
+        fs.renameSync(tmp, APPEARANCE_FILE);
+    } catch (e) {
+        try { fs.rmSync(tmp, { force: true }); } catch (_) {}
+        throw e;
+    }
+}
+function appearanceNotify(sender) {
+    for (const w of BrowserWindow.getAllWindows()) {
+        try {
+            const wc = w.webContents;
+            if (!wc.isDestroyed() && wc !== sender) wc.send("LiteLoader.liuli.appearanceChanged");
+        } catch (_) {}
+    }
+}
+ipcMain.handle("LiteLoader.liuli.appearanceLoad", () => ({
+    ok: !appearanceState.error, exists: appearanceState.exists,
+    values: { ...appearanceState.values }, error: appearanceState.error || ""
+}));
+ipcMain.handle("LiteLoader.liuli.appearanceSave", (event, key, raw) => {
+    try {
+        const value = validateAppearance(key, raw);
+        const values = { ...appearanceState.values, [key]: value };
+        writeAppearance(values);
+        appearanceState = { exists: true, values };
+        appearanceNotify(event.sender);
+        return { ok: true };
+    } catch (e) {
+        log("appearance save failed (" + String(key).slice(0, 50) + "): " + (e && e.message));
+        return { ok: false, error: String((e && e.message) || e) };
+    }
+});
+ipcMain.handle("LiteLoader.liuli.appearanceImport", (event, oldValues) => {
+    try {
+        if (appearanceState.exists) return { ok: true, imported: false };
+        if (!oldValues || typeof oldValues !== "object" || Array.isArray(oldValues))
+            return { ok: false, error: "invalid import data" };
+        const values = {};
+        for (const key of APPEARANCE_KEYS) {
+            if (Object.prototype.hasOwnProperty.call(oldValues, key))
+                values[key] = validateAppearance(key, oldValues[key]);
+        }
+        if (Object.keys(values).length === 0) return { ok: true, imported: false };
+        writeAppearance(values);
+        appearanceState = { exists: true, values };
+        appearanceNotify(event.sender);
+        return { ok: true, imported: true };
+    } catch (e) {
+        log("appearance import failed: " + (e && e.message));
+        return { ok: false, error: String((e && e.message) || e) };
+    }
+});
+ipcMain.handle("LiteLoader.liuli.appearanceReset", event => {
+    try {
+        fs.rmSync(APPEARANCE_FILE, { force: true });
+        appearanceState = { exists: false, values: {} };
+        appearanceNotify(event.sender);
+        return { ok: true };
+    } catch (e) {
+        log("appearance reset failed: " + (e && e.message));
+        return { ok: false, error: String((e && e.message) || e) };
+    }
+});
+
 /* LiteLoader 在内核报 onSessionInitComplete 时触发 onLogin(uid)。 */
 let selfUid = "";
 ipcMain.handle("LiteLoader.liuli.selfUid", () => selfUid);

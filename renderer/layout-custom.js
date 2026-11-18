@@ -15,17 +15,104 @@ const ICON_DOWN = '<svg viewBox="0 0 24 24" width="16" height="16" fill="current
 const ICON_SHOW = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>';
 const ICON_HIDE = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46A11.804 11.804 0 0 0 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78 3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/></svg>';
 
+/* macOS 上 QQ 会话中的 localStorage 可能在重启后丢失。
+ * 文件是跨重启存档，localStorage 仍负责当场生效与窗口间同步。
+ * 只在第一次初始化时从主进程恢复；不能让迟到的读操作覆盖用户刚点的设置。 */
+let layoutCache = null;
+let seenCache = null;
+let layoutEditVersion = 0;
+let seenEditVersion = 0;
+let layoutHydration = null;
+let layoutHydrated = false;
+
+function readStorageObject(key) {
+    try {
+        const raw = localStorage.getItem(key);
+        if (raw === null) return null;
+        const obj = JSON.parse(raw);
+        return obj && typeof obj === "object" && !Array.isArray(obj) ? obj : null;
+    } catch (e) { return null; }
+}
+function persistLayout(kind, value) {
+    const api = window.liuli_api;
+    if (!api || typeof api.layoutSave !== "function") {
+        console.warn("[liuli-layout] layoutSave unavailable, only localStorage was updated");
+        return Promise.resolve(false);
+    }
+    return Promise.resolve().then(() => api.layoutSave(kind, value)).then(result => {
+        if (!result || result.ok !== true) {
+            console.warn("[liuli-layout] save " + kind + " failed:", result && result.error);
+            return false;
+        }
+        return true;
+    }).catch(e => {
+        console.warn("[liuli-layout] save " + kind + " failed:", e);
+        return false;
+    });
+}
+function restoreStorage(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); }
+    catch (e) { console.warn("[liuli-layout] localStorage restore failed:", key, e); }
+}
+function hydrateLayout() {
+    if (layoutHydration) return layoutHydration;
+    const initialLayoutVersion = layoutEditVersion;
+    const initialSeenVersion = seenEditVersion;
+    layoutHydration = (async () => {
+        const api = window.liuli_api;
+        if (!api || typeof api.layoutLoad !== "function") return false;
+        let result;
+        try { result = await api.layoutLoad(); }
+        catch (e) { console.warn("[liuli-layout] layoutLoad failed:", e); return false; }
+        if (!result || result.ok !== true) return false;
+        let restored = false;
+        if (layoutEditVersion === initialLayoutVersion) {
+            if (result.layout) {
+                layoutCache = Object.assign({}, DEFAULTS, result.layout);
+                restoreStorage(KEY, layoutCache);
+                restored = true;
+            } else {
+                // 第一次升级时，沿用已存在的 localStorage 设置，顺便迁入文件。
+                const old = readStorageObject(KEY);
+                if (old) {
+                    layoutCache = Object.assign({}, DEFAULTS, old);
+                    void persistLayout("layout", layoutCache);
+                }
+            }
+        }
+        if (seenEditVersion === initialSeenVersion) {
+            if (result.seen) {
+                seenCache = result.seen;
+                restoreStorage(SEEN_KEY, seenCache);
+                restored = true;
+            } else {
+                const old = readStorageObject(SEEN_KEY);
+                if (old) {
+                    seenCache = old;
+                    void persistLayout("seen", seenCache);
+                }
+            }
+        }
+        if (restored) applyAll();
+        return restored;
+    })().finally(() => { layoutHydrated = true; });
+    return layoutHydration;
+}
+
 export function loadLayout() {
-    try { return Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(KEY) || "{}")); }
-    catch (e) { return Object.assign({}, DEFAULTS); }
+    const raw = readStorageObject(KEY) || layoutCache || {};
+    return Object.assign({}, DEFAULTS, raw);
 }
 function saveLayout(cfg) {
-    try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {}
+    layoutEditVersion++;
+    layoutCache = Object.assign({}, DEFAULTS, cfg);
+    restoreStorage(KEY, layoutCache);
+    void persistLayout("layout", layoutCache);
     applyAll();
 }
 function loadSeen() {
-    try { return Object.assign({ menu: [], bar: [], nav: [] }, JSON.parse(localStorage.getItem(SEEN_KEY) || "{}")); }
-    catch (e) { return { menu: [], bar: [], nav: [] }; }
+    const raw = readStorageObject(SEEN_KEY) || seenCache || {};
+    return Object.assign({ menu: [], bar: [], nav: [] }, raw);
 }
 function remember(kind, labels) {
     const seen = loadSeen();
@@ -38,7 +125,12 @@ function remember(kind, labels) {
         list.splice(prev ? list.indexOf(prev) + 1 : list.length, 0, l);
         changed = true;
     });
-    if (changed) try { localStorage.setItem(SEEN_KEY, JSON.stringify(seen)); } catch (e) {}
+    if (changed) {
+        seenEditVersion++;
+        seenCache = seen;
+        restoreStorage(SEEN_KEY, seen);
+        void persistLayout("seen", seen);
+    }
 }
 
 /* 把用户排序和见过的名单合成最终顺序：用户排过的在前（按用户的顺序），没排过的按原生顺序接在后面 */
@@ -191,8 +283,19 @@ export function applyAll() {
 export function installLayout(barChanged) {
     onBarChange = barChanged;
     watchMenus();
-    addEventListener("storage", e => { if (e.key === KEY) applyAll(); });
+    addEventListener("storage", e => {
+        if (e.key === KEY) {
+            layoutEditVersion++;
+            layoutCache = readStorageObject(KEY);
+            applyAll();
+        }
+        if (e.key === SEEN_KEY) {
+            seenEditVersion++;
+            seenCache = readStorageObject(SEEN_KEY);
+        }
+    });
     applyAll();
+    void hydrateLayout();
 }
 
 /* ════════════════ 设置页 ════════════════ */
@@ -259,6 +362,15 @@ function sortList(host, items, opts) {
 }
 
 export function buildLayoutControls(host) {
+    // 设置页若先于磁盘读取完成，恢复后自动重建控件，避免只更新 DOM 样式却显示默认按钮。
+    const pending = !layoutHydrated;
+    const initialVersion = layoutEditVersion;
+    void hydrateLayout().then(restored => {
+        if (pending && restored && layoutEditVersion === initialVersion && host.isConnected) {
+            host.innerHTML = "";
+            buildLayoutControls(host);
+        }
+    });
     const cfg = loadLayout();
     const seen = loadSeen();
     const save = () => saveLayout(cfg);

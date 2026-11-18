@@ -467,8 +467,101 @@ const LL_RESET_KNOWN_KEYS = [
     "liuli-wp-advice-dismissed"
 ];
 
+/* ---------- macOS 文字 + 配色设置文件持久化 ----------
+ * 原有 localStorage 用于即时同步；appearance.json 负责重启持久化。
+ * 写失败必须可见，不能再静默吞掉；独立于布局和壁纸两个已验证的存档。 */
+const LL_APPEARANCE_KEYS = ["liuli-color-roles", "liuli-md-render", "liuli-font", "liuli-dsh-mode"];
+let llAppearanceEditVersion = 0;
+let llAppearanceSubscribed = false;
+const llAppearancePending = new Set();
+function llLocalAppearance(key, value) {
+    if (value == null || (key === "liuli-dsh-mode" && value === "auto") ||
+        (key === "liuli-font" && value === "")) {
+        localStorage.removeItem(key);
+    } else {
+        localStorage.setItem(key, value);
+    }
+}
+function llPersistAppearance(key, value) {
+    llAppearanceEditVersion++;
+    try { llLocalAppearance(key, value); }
+    catch (e) { console.warn("[liuli] appearance localStorage 写入失败:", key, e); }
+    const task = (async () => {
+        const api = window.liuli_api;
+        if (!api || typeof api.appearanceSave !== "function") {
+            toast("设置文件保存接口不可用，请完全重启 QQ");
+            return { ok: false };
+        }
+        try {
+            const result = await api.appearanceSave(key, value);
+            if (!result || result.ok !== true) {
+                console.warn("[liuli] appearance 文件保存失败:", key, result && result.error);
+                toast("设置保存失败：" + (result && result.error || "请查看 plugin.log"));
+                return { ok: false };
+            }
+            return { ok: true };
+        } catch (e) {
+            console.warn("[liuli] appearance IPC 保存失败:", key, e);
+            toast("设置保存失败：" + (e && e.message || e));
+            return { ok: false };
+        }
+    })();
+    llAppearancePending.add(task);
+    task.finally(() => llAppearancePending.delete(task));
+    return task;
+}
+async function llRestoreAppearance(boot) {
+    const api = window.liuli_api;
+    if (!api || typeof api.appearanceLoad !== "function") return;
+    const before = llAppearanceEditVersion;
+    let data;
+    try { data = await api.appearanceLoad(); }
+    catch (e) { console.warn("[liuli] appearance 文件读取失败:", e); return; }
+    if (before !== llAppearanceEditVersion) return; // 防止慢读取覆盖刚刚的新编辑
+    if (!data || !data.ok) {
+        console.warn("[liuli] appearance 文件无效，保留当前设置:", data && data.error);
+        return;
+    }
+    if (!data.exists && boot) {
+        // 首次安装：一次性、原子地迁移旧浏览器存储；多个预创建窗口不会互相覆盖。
+        const old = {};
+        for (const key of LL_APPEARANCE_KEYS) {
+            try {
+                const value = localStorage.getItem(key);
+                if (value != null) old[key] = value;
+            } catch (e) {}
+        }
+        if (Object.keys(old).length && typeof api.appearanceImport === "function") {
+            const result = await api.appearanceImport(old);
+            if (!result || result.ok !== true)
+                console.warn("[liuli] appearance 旧设置迁移失败:", result && result.error);
+        }
+        return;
+    }
+    const values = data.exists ? (data.values || {}) : {};
+    for (const key of LL_APPEARANCE_KEYS) {
+        try { llLocalAppearance(key, Object.prototype.hasOwnProperty.call(values, key) ? values[key] : null); }
+        catch (e) { console.warn("[liuli] appearance 本地缓存恢复失败:", key, e); }
+    }
+    if (!boot) {
+        // 其它 QQ 窗口在运行时修改配置时，立即重应用视觉效果。
+        try { llApplyFont(); llApplyMode(false); llMarkdownPass(); }
+        catch (e) { console.warn("[liuli] appearance 重新应用失败:", e); }
+        window.__liuliPaletteApplied = false;
+        try { await applyDynamicPalette(); } catch (e) {}
+    }
+}
+function llSubscribeAppearance() {
+    const api = window.liuli_api;
+    if (llAppearanceSubscribed || !api || typeof api.onAppearanceChanged !== "function") return;
+    llAppearanceSubscribed = true;
+    api.onAppearanceChanged(() => { void llRestoreAppearance(false); });
+}
+
 async function llResetAll() {
     let ok = true;
+    // 避免旧窗口里尚未完成的保存请求在重置后把 appearance.json 写回来。
+    await Promise.allSettled(Array.from(llAppearancePending));
     /* 1) localStorage：先按前缀扫一遍 */
     try {
         const keys = [];
@@ -486,7 +579,23 @@ async function llResetAll() {
     for (const k of LL_RESET_KNOWN_KEYS) {
         try { localStorage.removeItem(k); } catch (e) {}
     }
-    /* 3) config.json 回到默认值（set 可能是异步的，失败不影响前面已清掉的结果） */
+    /* 3) 文件存档同步重置；否则布局/壁纸会在下次启动时从 JSON 复活。 */
+    try {
+        const api = window.liuli_api;
+        for (const method of ["layoutReset", "wallpaperReset", "appearanceReset"]) {
+            if (!api || typeof api[method] !== "function") {
+                ok = false;
+                console.warn("[liuli] 恢复默认缺少接口: " + method);
+                continue;
+            }
+            const result = await api[method]();
+            if (!result || result.ok !== true) {
+                ok = false;
+                console.warn("[liuli] 恢复默认文件清理失败: " + method, result && result.error);
+            }
+        }
+    } catch (e) { ok = false; console.warn("[liuli] 恢复默认文件清理异常:", e); }
+    /* 4) config.json 回到默认值（set 可能是异步的，失败不影响前面已清掉的结果） */
     try {
         await LiteLoader.api.config.set(SETTINGS_KEY, Object.assign({}, DEFAULT_SETTINGS));
     } catch (e) {
@@ -1675,6 +1784,81 @@ const LL_WALLPAPER_KEY = "liuli-dsh-wallpaper";
 // 主窗口只读它判断"是否变了"，避免每 1.5 秒解析 783KB 的壁纸 dataURL。
 const LL_WALLPAPER_REV_KEY = "liuli-dsh-wallpaper-rev";
 
+/* 文件存档跨重启、localStorage 即时同步；不改原壁纸选择/裁剪算法。 */
+let llWallpaperFallback = null;
+let llWallpaperPreferFallback = false;
+let llWallpaperEditVersion = 0;
+let llWallpaperSubscribed = false;
+
+async function llWallpaperPersistDisk(state) {
+    const api = window.liuli_api;
+    if (!api || typeof api.wallpaperSave !== "function")
+        return { ok: false, error: "壁纸文件保存接口不可用，请确认 main/preload 已更新" };
+    try {
+        const result = await api.wallpaperSave(state);
+        return result && result.ok === true ? { ok: true } :
+            { ok: false, error: result && result.error || "未知文件写入错误" };
+    } catch (e) {
+        return { ok: false, error: String(e && e.message || e) };
+    }
+}
+function llWallpaperRestoreLocal(state) {
+    llWallpaperFallback = Object.assign({}, LL_WP_DEFAULTS, state || {});
+    llWallpaperPreferFallback = false;
+    try {
+        if (llWallpaperFallback.src)
+            localStorage.setItem(LL_WALLPAPER_KEY, JSON.stringify(llWallpaperFallback));
+        else localStorage.removeItem(LL_WALLPAPER_KEY);
+        localStorage.setItem(LL_WALLPAPER_REV_KEY, String(Date.now()));
+    } catch (e) {
+        llWallpaperPreferFallback = true;
+        console.warn("[liuli] 壁纸缓存恢复失败（磁盘副本仍在）:", e);
+    }
+}
+async function llWallpaperLoadDisk(boot) {
+    const api = window.liuli_api;
+    if (!api || typeof api.wallpaperLoad !== "function") return;
+    const before = llWallpaperEditVersion;
+    let result;
+    try { result = await api.wallpaperLoad(); }
+    catch (e) { console.warn("[liuli] 读取壁纸文件失败:", e); return; }
+    if (llWallpaperEditVersion !== before) return; // 不覆盖等待期间用户刚选的图
+    if (!result || result.ok !== true) {
+        console.warn("[liuli] 壁纸存档损坏或不可读:", result && result.error);
+        return;
+    }
+    if (result.exists) {
+        llWallpaperRestoreLocal(result.state);
+    } else if (boot) {
+        // 首次升级：原来的浏览器存储若还在，迁移一次，不删旧数据。
+        const old = loadWallpaperState();
+        if (old && old.src) {
+            const migrated = await llWallpaperPersistDisk(old);
+            if (!migrated.ok) console.warn("[liuli] 旧壁纸迁移失败:", migrated.error);
+        }
+        return;
+    } else {
+        // "恢复全部默认" 在另一窗口触发。
+        llWallpaperRestoreLocal(LL_WP_DEFAULTS);
+    }
+    if (!boot) {
+        const st = loadWallpaperState();
+        renderWallpaper(st, "file-sync");
+        if (st.src && !getImageRatio(st.src)) {
+            primeImageRatio(st.src).then(() => renderWallpaper(loadWallpaperState(), "file-ratio"));
+        }
+        refreshWallpaperPreview();
+        window.__liuliPaletteApplied = false;
+        applyDynamicPalette();
+    }
+}
+function llWallpaperSubscribeFile() {
+    const api = window.liuli_api;
+    if (llWallpaperSubscribed || !api || typeof api.onWallpaperChanged !== "function") return;
+    llWallpaperSubscribed = true;
+    api.onWallpaperChanged(() => { void llWallpaperLoadDisk(false); });
+}
+
 function llErrText(e) {
     if (!e) return "";
     try {
@@ -1720,15 +1904,17 @@ const LL_WP_DEFAULTS = { src: null, area: null, fit: "cover" };
 
 function loadWallpaperState() {
     try {
+        if (llWallpaperPreferFallback && llWallpaperFallback)
+            return Object.assign({}, LL_WP_DEFAULTS, llWallpaperFallback);
         const raw = localStorage.getItem(LL_WALLPAPER_KEY);
-        if (!raw) return Object.assign({}, LL_WP_DEFAULTS);
+        if (!raw) return Object.assign({}, LL_WP_DEFAULTS, llWallpaperFallback || {});
         const parsed = raw.charAt(0) === "{" ? JSON.parse(raw) : { src: raw };
         const st = Object.assign({}, LL_WP_DEFAULTS, parsed);
         // 兼容早期滑条版存下的字段（scale/posX/posY）——直接丢掉，回落到 cover
         if (!st.area || typeof st.area.w !== "number") st.area = null;
         return st;
     } catch (e) {
-        return Object.assign({}, LL_WP_DEFAULTS);
+        return Object.assign({}, LL_WP_DEFAULTS, llWallpaperFallback || {});
     }
 }
 
@@ -2137,18 +2323,23 @@ function llBtn(text, variant) {
     return b;
 }
 
-function llApplyWallpaper(st) {
+async function llApplyWallpaper(st) {
+    llWallpaperEditVersion++;
+    llWallpaperFallback = Object.assign({}, LL_WP_DEFAULTS, st || {});
     const saved = saveWallpaperState(st, true);
+    llWallpaperPreferFallback = !saved.ok;
     if (st && st.src && !getImageRatio(st.src)) {
         primeImageRatio(st.src).then(function () { renderWallpaper(loadWallpaperState(), "user"); refreshWallpaperPreview(); });
     }
     renderWallpaper(st, "user");
     refreshWallpaperPreview();
-    if (!saved.ok) {
-        // 契约第四节第 1 条：不再静默；把异常名/消息直接告诉用户
-        toast("壁纸保存失败：" + saved.error + "（仅本次生效，重启后可能丢失）");
+    const disk = await llWallpaperPersistDisk(st);
+    if (!disk.ok) {
+        toast("壁纸文件保存失败：" + disk.error + "（仅本次会话生效）");
+    } else if (!saved.ok) {
+        toast("壁纸已写入文件，下次启动会恢复；localStorage 缓存失败：" + saved.error);
     }
-    return saved;
+    return disk;
 }
 
 /* 主界面视口比例：壁纸铺在主聊天界面上，预览/框选必须按主界面的实时宽高比算，
@@ -2205,7 +2396,9 @@ function buildWallpaperControls(host) {
     const fileName = document.createElement("span");
     fileName.className = "liuli-wp-filename";
     const removeBtn = llBtn("移除", "ghost");
-    removeBtn.addEventListener("click", function () {
+    removeBtn.addEventListener("click", async function () {
+        llWallpaperEditVersion++;
+        llWallpaperFallback = Object.assign({}, LL_WP_DEFAULTS);
         let ok = true;
         let error = "";
         try {
@@ -2216,13 +2409,15 @@ function buildWallpaperControls(host) {
             ok = false;
             error = llErrText(e);
         }
+        llWallpaperPreferFallback = !ok;
         auditWallpaper("remove", { ok: ok, error: error });
         renderWallpaper(null, "remove");
         window.__liuliPaletteApplied = false;
         applyDynamicPalette();
         fileName.textContent = "";
         refreshWallpaperPreview();
-        toast(ok ? "已恢复默认壁纸" : "移除壁纸失败：" + error);
+        const disk = await llWallpaperPersistDisk(LL_WP_DEFAULTS);
+        toast(disk.ok ? "已恢复默认壁纸" : "移除壁纸文件失败：" + disk.error);
     });
     pick.addEventListener("change", function () {
         const f = pick.files && pick.files[0];
@@ -2233,15 +2428,15 @@ function buildWallpaperControls(host) {
         });
         chooseBtn.disabled = true;
         chooseBtn.textContent = "读取中…";
-        readImageFile(f, 2560).then(function (r) {
+        readImageFile(f, 2560).then(async function (r) {
             llImageRatioCache.set(r.dataUrl, r.ratio);
             const prev = loadWallpaperState();
-            llApplyWallpaper({ src: r.dataUrl, area: null, fit: prev.fit || "cover" });
+            const result = await llApplyWallpaper({ src: r.dataUrl, area: null, fit: prev.fit || "cover" });
             fileName.textContent = f.name;
-            if (r.over) {
-                toast("壁纸已更新，但压到最小仍约 " + llFmtBytes(r.dataUrl.length) + "，若显示异常请换一张更小的图");
-            } else {
-                toast("壁纸已更新，主题色已按新壁纸取色");
+            if (result.ok && r.over) {
+                toast("壁纸已存档，但压到最小仍约 " + llFmtBytes(r.dataUrl.length) + "，若显示异常请换一张更小的图");
+            } else if (result.ok) {
+                toast("壁纸已保存到文件，重启后会自动恢复");
             }
             if (llModeAdviceRefresh) llModeAdviceRefresh();
         }).catch(function (e) {
@@ -2652,7 +2847,7 @@ async function llCheckModeAdvice(box) {
     acts.className = "liuli-wp-actions";
     const go = llBtn("切换为" + (dark ? "亮色" : "暗色"), "primary");
     go.addEventListener("click", function (e) {
-        try { localStorage.setItem(LL_MODE_KEY, target); } catch (err) {}
+        void llPersistAppearance(LL_MODE_KEY, target);
         llApplyMode(true, e.clientX, e.clientY);
         if (typeof llModeRefresh === "function") llModeRefresh();
         box.hidden = true;
@@ -2692,10 +2887,7 @@ function buildModeControls(host) {
         b.className = "liuli-seg__item";
         b.textContent = p[1];
         b.addEventListener("click", function (e) {
-            try {
-                if (p[0] === "auto") localStorage.removeItem(LL_MODE_KEY);
-                else localStorage.setItem(LL_MODE_KEY, p[0]);
-            } catch (err) {}
+            void llPersistAppearance(LL_MODE_KEY, p[0]);
             llApplyMode(true, e.clientX, e.clientY);
             refresh();
             if (llModeAdviceRefresh) llModeAdviceRefresh();
@@ -3114,7 +3306,11 @@ function buildPanelContent(host, settings) {
     pageLook.appendChild(veilNote);
 
     /* ── 其余各页：原有分组函数原样调用，只是容器从 host 换成对应页 ── */
-    buildRoleControls(pageColor, function () { window.__liuliPaletteApplied = false; applyDynamicPalette(); });
+    buildRoleControls(pageColor, function (roles) {
+        void llPersistAppearance(ROLE_KEY, JSON.stringify(roles));
+        window.__liuliPaletteApplied = false;
+        applyDynamicPalette();
+    });
     buildWallpaperControls(pageWp);      // 壁纸选择 / 裁剪适应 / 壁纸亮度提示
     buildLayoutSection(pageLayout);      // layout-custom.js 的全部分组
     const textGroup = document.createElement("div");
@@ -3206,6 +3402,14 @@ async function initPanel() {
 
     const started = Date.now();
     installRouteScope();
+    // 在取色、应用字体、Markdown 和绘制配色控件之前先恢复轻量设置。
+    try { await llRestoreAppearance(true); }
+    catch (e) { console.warn("[liuli] 外观设置恢复失败:", e); }
+    llSubscribeAppearance();
+    // 先恢复壁纸文件，再取色/绘制/读取界面状态，避免启动时拿到空 localStorage。
+    try { await llWallpaperLoadDisk(true); }
+    catch (e) { console.warn("[liuli] 壁纸文件恢复失败:", e); }
+    llWallpaperSubscribeFile();
     try {
         const chunks = [];
         for (const file of FILES) {
@@ -3425,7 +3629,7 @@ function buildMarkdownControls(host) {
         b.className = "liuli-seg__item";
         b.textContent = p[1];
         b.addEventListener("click", function () {
-            try { localStorage.setItem(LL_MD_KEY, p[0]); } catch (err) {}
+            void llPersistAppearance(LL_MD_KEY, p[0]);
             llMarkdownPass();
             refresh();
         });
@@ -3576,10 +3780,7 @@ function buildFontControls(host) {
 
     const apply = name => {
         name = llCleanFont(name);
-        try {
-            if (name) localStorage.setItem(LL_FONT_KEY, name);
-            else localStorage.removeItem(LL_FONT_KEY);
-        } catch (e) {}
+        void llPersistAppearance(LL_FONT_KEY, name || null);
         input.value = name;
         llApplyFont();
     };

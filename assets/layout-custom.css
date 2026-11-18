@@ -217,3 +217,13 @@ body[data-liuli-nav-pin][data-liuli-scope="main"] .two-col-layout__aside > .rece
 body[data-liuli-nav-pin] #liuli-nav-handle:not(#ll) {
   display: none !important;
 }
+
+/* macOS：独立聊天窗口高清壁纸 */
+body:not([data-liuli-scope="main"]):has(.chat-msg-area) {
+    --ll-aux-opacity: 0.10;
+}
+
+body:not([data-liuli-scope="main"]):has(.chat-msg-area) #app::after {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
