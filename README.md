@@ -2,8 +2,6 @@
 
 # 琉璃 Liuli
 
-> 本分支保留原项目的 SnowLora 版本。macOS 适配与维护请访问 [liteloader](https://github.com/Oceansdd/qqnt-liuli-theme-macOS/edit/liteloader) 分支
-
 **把 DSH 客户端的「琉璃」视觉语言搬到 QQNT 上的主题插件（SnowLora 版）**
 
 [![SnowLora](https://img.shields.io/badge/SnowLora-0.3.0%2B-7c6ce6?style=flat-square)](#)
@@ -12,7 +10,11 @@
 
 <img src="https://count.getloli.com/get/@qqnt-liuli-theme?theme=gelbooru" alt="访问计数" />
 
+---
+
 </div>
+
+> 本分支保留原项目的 SnowLora 版本。macOS 适配与维护请访问 [liteloader 分支](https://github.com/Oceansdd/qqnt-liuli-theme-macOS/edit/liteloader)
 
 > LiteLoaderQQNT 版在 [liteloader 分支](https://github.com/LilycleHeart/qqnt-liuli-theme/tree/liteloader)，安装器见 [Releases](https://github.com/LilycleHeart/qqnt-liuli-theme/releases/latest)。
 
