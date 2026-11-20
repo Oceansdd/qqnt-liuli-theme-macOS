@@ -322,10 +322,10 @@ ipcMain.handle("LiteLoader.liuli.wallpaperReset", (event) => {
 /* ---------- macOS 外观 / 文字独立持久化 ----------
  * 这四项原先只存在 localStorage，macOS QQ 部分会话重启会丢失。
  * 用小 JSON 作权威存档，localStorage 仍负责运行时即时反馈和跨窗口 UI 同步。
- * 只接收 4 个白名单键，不接受路径或任意数据；写入先落临时文件再原子替换。 */
+ * 只接收白名单键，不接受路径或任意数据；写入先落临时文件再原子替换。 */
 const APPEARANCE_FILE = path.join(LIULI_DATA_DIR, "appearance.json");
 const APPEARANCE_KEYS = Object.freeze([
-    "liuli-color-roles", "liuli-md-render", "liuli-font", "liuli-dsh-mode"
+    "liuli-color-roles", "liuli-md-render", "liuli-font", "liuli-dsh-mode", "liuli-material"
 ]);
 const APPEARANCE_MAX_BYTES = 8 * 1024;
 function validateAppearance(key, raw) {
@@ -338,6 +338,10 @@ function validateAppearance(key, raw) {
     }
     if (key === "liuli-dsh-mode") {
         if (!["auto", "dark", "light"].includes(raw)) throw new Error("invalid theme mode");
+        return raw;
+    }
+    if (key === "liuli-material") {
+        if (raw !== "classic" && raw !== "liquid-glass") throw new Error("invalid material mode");
         return raw;
     }
     if (key === "liuli-font") {

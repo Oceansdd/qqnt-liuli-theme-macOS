@@ -20,7 +20,7 @@ const api = {
         ipcRenderer.on("LiteLoader.liuli.wallpaperChanged", listener);
         return () => ipcRenderer.removeListener("LiteLoader.liuli.wallpaperChanged", listener);
     },
-    // 四项轻量外观设置的可靠文件存档：appearance.json
+    // 轻量外观设置的可靠文件存档：appearance.json
     appearanceLoad: () => ipcRenderer.invoke("LiteLoader.liuli.appearanceLoad"),
     appearanceSave: (key, value) => ipcRenderer.invoke("LiteLoader.liuli.appearanceSave", key, value),
     appearanceImport: values => ipcRenderer.invoke("LiteLoader.liuli.appearanceImport", values),

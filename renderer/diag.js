@@ -29,7 +29,7 @@ const WALLPAPER_STYLE_ID = "liuli-wallpaper-style";
 const FILES = [
     "wallpaper.css", "qq-tokens.css", "palette.css", "liuli.css", "typography.css",
     "panel.css", "settings-page.css", "details.css", "no-dividers.css", "input-bar.css",
-    "bubbles.css", "layout.css", "lists.css", "motion.css", "markdown.css", "layout-custom.css"
+    "bubbles.css", "layout.css", "lists.css", "motion.css", "markdown.css", "layout-custom.css", "liquid-glass.css"
 ];
 const OPTIONAL_FILES = ["wallpaper.css"];
 const DEFAULT_WALLPAPER = { css: "wallpaper.css", jpg: "wallpaper.jpg" };

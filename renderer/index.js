@@ -19,7 +19,7 @@ import {
 beginBoot();
 installDiagRuntime();
 const ASSET_BASE = "local://profile/plugins/" + SLUG + "/assets/";
-const FILES = ["wallpaper.css", "qq-tokens.css", "palette.css", "liuli.css", "typography.css", "panel.css", "settings-page.css", "details.css", "no-dividers.css", "input-bar.css", "bubbles.css", "layout.css", "lists.css", "motion.css", "markdown.css", "layout-custom.css"];
+const FILES = ["wallpaper.css", "qq-tokens.css", "palette.css", "liuli.css", "typography.css", "panel.css", "settings-page.css", "details.css", "no-dividers.css", "input-bar.css", "bubbles.css", "layout.css", "lists.css", "motion.css", "markdown.css", "layout-custom.css", "liquid-glass.css"];
 const STYLE_ID = "liuli-dsh-theme";
 const WALLPAPER = ASSET_BASE + "wallpaper.jpg";
 // 默认壁纸不随插件发布：assets/wallpaper.css（内联壁纸）和 assets/wallpaper.jpg（取色用）
@@ -262,8 +262,8 @@ async function applyDynamicPalette() {
 
 /* ---------- 承载层：只这些允许挂玻璃 ---------- */
 const GLASS = [
-    [".container-sidebar", "var(--ll-noise), rgba(var(--ll-acrylic), var(--ll-material-opacity))"],
-    [".recent-contact", "var(--ll-noise), rgba(var(--ll-acrylic), var(--ll-material-opacity))"],
+    [".container-sidebar", "var(--ll-liquid-panel-bg, var(--ll-noise), rgba(var(--ll-acrylic), var(--ll-material-opacity)))", "var(--ll-liquid-panel-blur, var(--ll-material-blur))"],
+    [".recent-contact", "var(--ll-liquid-panel-bg, var(--ll-noise), rgba(var(--ll-acrylic), var(--ll-material-opacity)))", "var(--ll-liquid-panel-blur, var(--ll-material-blur))"],
     // .chat-header 不加材质（群聊标题栏保持通透）
     // .chat-input-area 也不加！它的 backdrop-filter 是内联写入的，
     // 会让内部的 .msg-input（ProseMirror 编辑器）完全不绘制 ——
@@ -366,13 +366,13 @@ function fixContrast() {
 
 function applyOverrides() {
     try {
-        for (const [sel, bg] of GLASS) {
+        for (const [sel, bg, blur = "var(--ll-material-blur)"] of GLASS) {
             document.querySelectorAll(sel).forEach(el => {
                 if (el.dataset.liuliGlass) return;
                 el.dataset.liuliGlass = "1";
                 el.style.setProperty("background", bg, "important");
-                el.style.setProperty("backdrop-filter", "var(--ll-material-blur)", "important");
-                el.style.setProperty("-webkit-backdrop-filter", "var(--ll-material-blur)", "important");
+                el.style.setProperty("backdrop-filter", blur, "important");
+                el.style.setProperty("-webkit-backdrop-filter", blur, "important");
                 el.style.setProperty("border-radius", "var(--ll-radius)", "important");
             });
         }
@@ -464,13 +464,14 @@ const LL_RESET_KNOWN_KEYS = [
     "liuli-layout", "liuli-layout-seen", "liuli-dsh-mode", "liuli-dsh-wallpaper",
     "liuli-dsh-wallpaper-rev", "liuli-dsh-main-viewport", "liuli-settings-tab",
     "liuli-md-render", "liuli-font", "liuli-dsh-settings", "liuli-color-roles",
-    "liuli-wp-advice-dismissed"
+    "liuli-wp-advice-dismissed", "liuli-material"
 ];
 
 /* ---------- macOS 文字 + 配色设置文件持久化 ----------
  * 原有 localStorage 用于即时同步；appearance.json 负责重启持久化。
  * 写失败必须可见，不能再静默吞掉；独立于布局和壁纸两个已验证的存档。 */
-const LL_APPEARANCE_KEYS = ["liuli-color-roles", "liuli-md-render", "liuli-font", "liuli-dsh-mode"];
+const LL_MATERIAL_KEY = "liuli-material";
+const LL_APPEARANCE_KEYS = ["liuli-color-roles", "liuli-md-render", "liuli-font", "liuli-dsh-mode", LL_MATERIAL_KEY];
 let llAppearanceEditVersion = 0;
 let llAppearanceSubscribed = false;
 const llAppearancePending = new Set();
@@ -544,6 +545,7 @@ async function llRestoreAppearance(boot) {
         catch (e) { console.warn("[liuli] appearance 本地缓存恢复失败:", key, e); }
     }
     if (!boot) {
+        llApplyMaterial();
         // 其它 QQ 窗口在运行时修改配置时，立即重应用视觉效果。
         try { llApplyFont(); llApplyMode(false); llMarkdownPass(); }
         catch (e) { console.warn("[liuli] appearance 重新应用失败:", e); }
@@ -2757,6 +2759,7 @@ function llApplyMode(withTransition, x, y) {
 }
 try {
     window.addEventListener("storage", function (e) {
+        if (e.key === LL_MATERIAL_KEY || e.key === null) llApplyMaterial();
         if (e.key === LL_MODE_KEY) { llApplyMode(false); if (typeof llModeRefresh === "function") llModeRefresh(); }
         // 配色（颜色角色）在别的窗口改了：重新派生一次色板
         if (e.key === ROLE_KEY) { window.__liuliPaletteApplied = false; applyDynamicPalette(); }
@@ -2869,6 +2872,48 @@ window.__liuliModeAdvice = function () {
     const box = document.createElement("div");
     return llCheckModeAdvice(box).then(function (r) { return r && { luma: +r.luma.toFixed(3), current: +r.current.toFixed(2), other: +r.other.toFixed(2), advise: r.advise }; });
 };
+
+function llMaterialMode() {
+    try {
+        return localStorage.getItem(LL_MATERIAL_KEY) === "liquid-glass" ? "liquid-glass" : "classic";
+    } catch (e) { return "classic"; }
+}
+
+function llApplyMaterial() {
+    const mode = llMaterialMode();
+    document.body.toggleAttribute("data-liuli-liquid-glass", mode === "liquid-glass");
+    for (const button of document.querySelectorAll("[data-liuli-material-option]")) {
+        const selected = button.dataset.liuliMaterialOption === mode;
+        button.classList.toggle("is-active", selected);
+        button.setAttribute("aria-pressed", String(selected));
+    }
+}
+
+function buildMaterialControls(host) {
+    const row = document.createElement("div");
+    row.className = "liuli-wp-fit";
+    const label = document.createElement("span");
+    label.textContent = "材质模式";
+    const controls = document.createElement("div");
+    controls.className = "liuli-seg";
+    controls.setAttribute("role", "group");
+    controls.setAttribute("aria-label", label.textContent);
+    for (const [mode, text] of [["classic", "经典琉璃"], ["liquid-glass", "Liquid Glass 风格"]]) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "liuli-seg__item";
+        button.textContent = text;
+        button.dataset.liuliMaterialOption = mode;
+        button.addEventListener("click", () => {
+            void llPersistAppearance(LL_MATERIAL_KEY, mode);
+            llApplyMaterial();
+        });
+        controls.appendChild(button);
+    }
+    row.append(label, controls);
+    host.appendChild(row);
+    llApplyMaterial();
+}
 
 function buildModeControls(host) {
     const row = document.createElement("div");
@@ -3252,6 +3297,7 @@ function buildPanelContent(host, settings) {
     group.className = "liuli-panel__group";
     group.textContent = "材质";
     pageLook.appendChild(group);
+    buildMaterialControls(pageLook);
 
     const inputs = {};
     for (const f of FIELDS) {
@@ -3326,7 +3372,9 @@ function buildPanelContent(host, settings) {
     reset.className = "liuli-field__hint";
     reset.style.cssText = "cursor:pointer;color:var(--ll-brand);margin-top:14px;";
     reset.textContent = "恢复默认";
-    reset.addEventListener("click", () => {
+    reset.addEventListener("click", async () => {
+        const materialSaved = llPersistAppearance(LL_MATERIAL_KEY, "classic");
+        llApplyMaterial();
         Object.assign(settings, DEFAULT_SETTINGS);
         for (const f of FIELDS) {
             inputs[f.key].value = settings[f.key];
@@ -3334,7 +3382,7 @@ function buildPanelContent(host, settings) {
         }
         llRefreshVeilSegs(settings);   // 遮罩颜色也回到「亮 / 暗」
         saveSettings(settings);
-        toast("已恢复默认");
+        if ((await materialSaved).ok) toast("已恢复默认");
     });
     pageLook.appendChild(reset);
 
@@ -3347,6 +3395,7 @@ function buildPanelContent(host, settings) {
     resetAll.addEventListener("click", async () => {
         if (!confirm("恢复全部默认设置？包括布局、明暗、壁纸、字体等，需要重启 QQ 生效。")) return;
         const ok = await llResetAll();
+        llApplyMaterial();
         Object.assign(settings, DEFAULT_SETTINGS);
         for (const f of FIELDS) {
             inputs[f.key].value = settings[f.key];
@@ -3405,6 +3454,7 @@ async function initPanel() {
     // 在取色、应用字体、Markdown 和绘制配色控件之前先恢复轻量设置。
     try { await llRestoreAppearance(true); }
     catch (e) { console.warn("[liuli] 外观设置恢复失败:", e); }
+    llApplyMaterial();
     llSubscribeAppearance();
     // 先恢复壁纸文件，再取色/绘制/读取界面状态，避免启动时拿到空 localStorage。
     try { await llWallpaperLoadDisk(true); }
