@@ -91,6 +91,29 @@ ipcMain.handle("LiteLoader.liuli.resetPending", () => {
 });
 
 
+/* ---------- 诊断页样式重载 ---------- */
+ipcMain.handle("LiteLoader.liuli.reloadStyles", async () => {
+    let loaded = 0;
+    let failed = 0;
+    const windows = BrowserWindow.getAllWindows();
+    const results = await Promise.allSettled(windows.map(async win => {
+        const wc = win.webContents;
+        if (wc.isDestroyed()) return false;
+        return wc.executeJavaScript(
+            'typeof window.__liuliReloadStyles === "function" ? window.__liuliReloadStyles() : false'
+        );
+    }));
+    for (const result of results) {
+        if (result.status === "fulfilled") {
+            if (result.value === true) loaded++;
+        } else {
+            failed++;
+            log("style reload failed: " + String(result.reason && result.reason.message || result.reason));
+        }
+    }
+    return { loaded, failed };
+});
+
 /* ---------- macOS 布局设置持久化兜底（不依赖 Chromium localStorage） ----------
  * 只接受布局/已发现菜单项两个已知结构，固定写入 data/liuli-dsh-theme/layout.json。
  * 先落同目录临时文件再原子替换，防止异常退出留下半截 JSON。 */
@@ -325,7 +348,7 @@ ipcMain.handle("LiteLoader.liuli.wallpaperReset", (event) => {
  * 只接收白名单键，不接受路径或任意数据；写入先落临时文件再原子替换。 */
 const APPEARANCE_FILE = path.join(LIULI_DATA_DIR, "appearance.json");
 const APPEARANCE_KEYS = Object.freeze([
-    "liuli-color-roles", "liuli-md-render", "liuli-font", "liuli-dsh-mode", "liuli-material"
+    "liuli-color-roles", "liuli-md-render", "liuli-font", "liuli-dsh-mode", "liuli-material", "liuli-chat-backdrop"
 ]);
 const APPEARANCE_MAX_BYTES = 8 * 1024;
 function validateAppearance(key, raw) {
@@ -343,6 +366,13 @@ function validateAppearance(key, raw) {
     if (key === "liuli-material") {
         if (raw !== "classic" && raw !== "liquid-glass") throw new Error("invalid material mode");
         return raw;
+    }
+    if (key === "liuli-chat-backdrop") {
+        const value = JSON.parse(raw);
+        if (!value || !Number.isFinite(value.opacity) || value.opacity < 0 || value.opacity > 1 ||
+            !Number.isFinite(value.blur) || value.blur < 0 || value.blur > 40)
+            throw new Error("invalid chat backdrop");
+        return JSON.stringify({ opacity: value.opacity, blur: value.blur });
     }
     if (key === "liuli-font") {
         if (raw.length > 64 || /["'\\;{}<>\x00-\x1f]/.test(raw)) throw new Error("invalid font name");

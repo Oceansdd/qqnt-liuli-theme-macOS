@@ -30,6 +30,7 @@ const api = {
         ipcRenderer.on("LiteLoader.liuli.appearanceChanged", listener);
         return () => ipcRenderer.removeListener("LiteLoader.liuli.appearanceChanged", listener);
     },
+    reloadStyles: () => ipcRenderer.invoke("LiteLoader.liuli.reloadStyles"),
     // 诊断包（契约 installer/DIAG-COVERAGE.md 3.1）
     diagExport: payload => ipcRenderer.invoke("LiteLoader.liuli.diagExport", payload),
     diagLog: entry => ipcRenderer.send("LiteLoader.liuli.diagLog", entry),

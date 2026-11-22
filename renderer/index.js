@@ -27,6 +27,11 @@ const WALLPAPER = ASSET_BASE + "wallpaper.jpg";
 const OPTIONAL_FILES = new Set(["wallpaper.css"]);
 const DEFAULT_SOURCE = "#1d9bf0";
 
+// QQ 的透明共享辅助窗口使用 about:blank，预加载窗口则使用 app:// 路由。
+function shouldSkipTheme() {
+    return location.href === "about:blank" || location.hash === "#/screenshareclosewindow";
+}
+
 /* ---------- 路由作用域 ---------- */
 function installRouteScope() {
     if (window.__liuliRouteScope) return;
@@ -41,13 +46,17 @@ function installRouteScope() {
         if (body.style.getPropertyValue("--hash") !== hash) body.style.setProperty("--hash", hash);
         if (body.style.getPropertyValue("--pathname") !== path) body.style.setProperty("--pathname", path);
         const scope = hash.indexOf("#/setting") === 0 ? "setting"
-            : hash.indexOf("#/main") === 0 ? "main"
+            : (hash === "#/main" || hash.indexOf("#/main/") === 0) ? "main"
             : (hash === "" || hash === "#/blank") ? "boot" : "aux";
         if (body.dataset.liuliScope !== scope) body.dataset.liuliScope = scope;
     };
     sync();
     addEventListener("hashchange", sync);
     addEventListener("popstate", sync);
+    const syncWindowFocus = () => body.toggleAttribute("data-liuli-window-focused", document.hasFocus());
+    syncWindowFocus();
+    window.addEventListener("focus", syncWindowFocus);
+    window.addEventListener("blur", syncWindowFocus);
     setInterval(sync, 400);
 }
 
@@ -233,7 +242,7 @@ function deriveVars(mcu, sourceHex, isDark, roles) {
 }
 
 async function applyDynamicPalette() {
-    if (window.__liuliPaletteApplied) return;
+    if (shouldSkipTheme() || window.__liuliPaletteApplied) return;
     window.__liuliPaletteApplied = true;
     let source = DEFAULT_SOURCE;
     try { source = await extractSource(); } catch (e) { source = DEFAULT_SOURCE; }
@@ -268,8 +277,8 @@ const GLASS = [
     // .chat-input-area 也不加！它的 backdrop-filter 是内联写入的，
     // 会让内部的 .msg-input（ProseMirror 编辑器）完全不绘制 ——
     // 表现就是"输入框消失、点了没反应"。输入区背景改由 input-bar.css 提供。
-    [".right-sidebar", "var(--ll-noise), rgba(var(--ll-acrylic), var(--ll-material-opacity))"],
-    [".group-box", "var(--ll-noise), rgba(var(--ll-acrylic), var(--ll-material-opacity))"],
+    [".right-sidebar", "var(--ll-liquid-detail-bg, var(--ll-noise), rgba(var(--ll-acrylic), var(--ll-material-opacity)))", "var(--ll-liquid-detail-blur, var(--ll-material-blur))"],
+    [".group-box", "var(--ll-liquid-detail-bg, var(--ll-noise), rgba(var(--ll-acrylic), var(--ll-material-opacity)))", "var(--ll-liquid-detail-blur, var(--ll-material-blur))"],
     // 左下角资料卡；必须排除 .topbar-profile（顶部同名元素宽 1797px）
     [".user-profile-card:not(.topbar-profile)", "var(--ll-noise), rgba(var(--ll-acrylic), var(--ll-material-opacity))"]
 ];
@@ -389,10 +398,22 @@ function applyOverrides() {
 }
 
 async function loadText(name) {
-    const response = await fetch(ASSET_BASE + name);
+    const response = await fetch(ASSET_BASE + name, { cache: "no-store" });
     if (!response.ok) throw new Error(name + " HTTP " + response.status);
     return await response.text();
 }
+
+async function llReloadStyles() {
+    if (shouldSkipTheme()) return false;
+    const chunks = [];
+    for (const file of FILES) {
+        try { chunks.push(await loadText(file)); }
+        catch (error) { if (!OPTIONAL_FILES.has(file)) throw error; }
+    }
+    ensureStyle().textContent = chunks.join("\n");
+    return true;
+}
+window.__liuliReloadStyles = llReloadStyles;
 
 function ensureStyle() {
     let el = document.getElementById(STYLE_ID);
@@ -471,7 +492,7 @@ const LL_RESET_KNOWN_KEYS = [
  * 原有 localStorage 用于即时同步；appearance.json 负责重启持久化。
  * 写失败必须可见，不能再静默吞掉；独立于布局和壁纸两个已验证的存档。 */
 const LL_MATERIAL_KEY = "liuli-material";
-const LL_APPEARANCE_KEYS = ["liuli-color-roles", "liuli-md-render", "liuli-font", "liuli-dsh-mode", LL_MATERIAL_KEY];
+const LL_APPEARANCE_KEYS = ["liuli-color-roles", "liuli-md-render", "liuli-font", "liuli-dsh-mode", LL_MATERIAL_KEY, "liuli-chat-backdrop"];
 let llAppearanceEditVersion = 0;
 let llAppearanceSubscribed = false;
 const llAppearancePending = new Set();
@@ -546,6 +567,7 @@ async function llRestoreAppearance(boot) {
     }
     if (!boot) {
         llApplyMaterial();
+        llApplyChatBackdrop();
         // 其它 QQ 窗口在运行时修改配置时，立即重应用视觉效果。
         try { llApplyFont(); llApplyMode(false); llMarkdownPass(); }
         catch (e) { console.warn("[liuli] appearance 重新应用失败:", e); }
@@ -644,6 +666,7 @@ function llApplyModeSettings() {
     const k = dark ? 1 : 0.6;
     b.style.setProperty("--ll-wallpaper-dim", String(llDimFor(cfg, dark)));
     b.style.setProperty("--ll-veil-rgb", LL_VEIL_RGB[llVeilFor(cfg, dark)]);
+    b.style.setProperty("--ll-shadow-strength", String(s));
     b.style.setProperty("--ll-shadow", "0 2px 10px rgba(var(--ll-shadow-rgb), " + (s * 0.4 * k).toFixed(2) + ")");
     b.style.setProperty("--ll-shadow-float", "0 8px 28px rgba(var(--ll-shadow-rgb), " + (s * 0.47 * k).toFixed(2) + ")");
 }
@@ -654,6 +677,7 @@ function applySettings(cfg, broadcast) {
     b.style.setProperty("--ll-material-blur", "blur(" + llModeCfg.blur + "px) saturate(1.6)");
     b.style.setProperty("--ll-material-opacity", String(llModeCfg.opacity));
     b.style.setProperty("--ll-glow-strength", String(llModeCfg.glow));
+    b.style.setProperty("--ll-gloss-strength", String(llModeCfg.glow));
     llApplyModeSettings();
 
     if (broadcast !== false && !llSuppressBroadcast) {
@@ -671,7 +695,7 @@ try {
             llSuppressBroadcast = true;
             applySettings(incoming, false);
             // 面板若存在，同步滑条位置
-            const sliders = document.querySelectorAll(".liuli-slider");
+            const sliders = document.querySelectorAll(".liuli-slider:not([data-liuli-chat-backdrop])");
             if (sliders.length === FIELDS.length) {
                 FIELDS.forEach(function (f, i) {
                     const el = sliders[i];
@@ -700,10 +724,11 @@ function llRefreshVeilSegs(cfg) {
     }
 }
 
+const GLOW_FIELD = { key: "glow", label: "泛光强度", min: 0, max: 1, step: 0.01, unit: "", hint: "品牌色在边缘的发光量", pct: v => v * 100 };
 const FIELDS = [
     { key: "blur", label: "材质模糊", min: 0, max: 40, step: 1, unit: "px", hint: "玻璃层的 backdrop-filter 半径" },
     { key: "opacity", label: "不透明度", min: 0.1, max: 0.9, step: 0.01, unit: "", hint: "玻璃底有多实。过低会影响可读性", pct: v => ((v - 0.1) / 0.8) * 100 },
-    { key: "glow", label: "泛光强度", min: 0, max: 1, step: 0.01, unit: "", hint: "品牌色在边缘的发光量", pct: v => v * 100 },
+    GLOW_FIELD,
     { key: "shadow", label: "阴影强度", min: 0, max: 1, step: 0.01, unit: "", hint: "玻璃卡片的投影浓度", pct: v => v * 100 },
     // 壁纸遮罩拆成亮色 / 暗色两条（需求 A.1），各自下面挂一个「遮罩颜色」分段按钮
     { key: "dimLight", veilKey: "veilLight", label: "亮色主题遮罩", min: 0, max: DIM_MAX, step: 0.01, unit: "", hint: "亮色主题下盖在壁纸上的遮罩。过低会影响可读性", pct: v => (v / DIM_MAX) * 100 },
@@ -2058,6 +2083,7 @@ function ensureWallpaperStyle() {
 }
 
 function renderWallpaper(state, reason) {
+    if (shouldSkipTheme()) return;
     const el = ensureWallpaperStyle();
     llWpLast = state;
     if (!state || !state.src) {
@@ -2093,7 +2119,7 @@ function renderWallpaper(state, reason) {
     el.textContent =
         // 伪元素的骨架也写在这里：以前只在默认壁纸 wallpaper.css 里，
         // 默认壁纸不再发布后，没有 content 的 ::before 不会画出来。
-        "#app::before {" +
+        "body[data-liuli-scope] #app::before {" +
         "  content: \"\" !important; position: absolute !important; inset: 0 !important;" +
         "  z-index: 0 !important; pointer-events: none !important;" +
         "  background-image: linear-gradient(rgba(var(--ll-veil-rgb, var(--ll-scrim-rgb)), var(--ll-wallpaper-dim, 0.18))," +
@@ -2166,7 +2192,7 @@ try {
 /* 跨窗口同步（设置页改 → 主界面跟着换） */
 try {
     window.addEventListener("storage", function (e) {
-        if (e.key !== LL_WALLPAPER_KEY) return;
+        if (shouldSkipTheme() || e.key !== LL_WALLPAPER_KEY) return;
         const st = loadWallpaperState();
         auditWallpaper("storage", {
             scope: llScopeName(), key: LL_WALLPAPER_KEY, hasSrc: !!(st && st.src)
@@ -2759,7 +2785,9 @@ function llApplyMode(withTransition, x, y) {
 }
 try {
     window.addEventListener("storage", function (e) {
+        if (shouldSkipTheme()) return;
         if (e.key === LL_MATERIAL_KEY || e.key === null) llApplyMaterial();
+        if (e.key === "liuli-chat-backdrop" || e.key === null) llApplyChatBackdrop();
         if (e.key === LL_MODE_KEY) { llApplyMode(false); if (typeof llModeRefresh === "function") llModeRefresh(); }
         // 配色（颜色角色）在别的窗口改了：重新派生一次色板
         if (e.key === ROLE_KEY) { window.__liuliPaletteApplied = false; applyDynamicPalette(); }
@@ -2768,7 +2796,7 @@ try {
 let llModeRefresh = null;
 try {
     new MutationObserver(function () {
-        if (llThemeMode() !== "auto") return;
+        if (shouldSkipTheme() || llThemeMode() !== "auto") return;
         const d = llIsDark() ? "1" : "0";
         if (document.body.dataset.liuliDark !== d) llApplyMode(false);
     }).observe(document.body, { attributes: true, attributeFilter: ["q-theme", "class"] });
@@ -2879,14 +2907,97 @@ function llMaterialMode() {
     } catch (e) { return "classic"; }
 }
 
-function llApplyMaterial() {
+function llApplyMaterial(root = document) {
     const mode = llMaterialMode();
-    document.body.toggleAttribute("data-liuli-liquid-glass", mode === "liquid-glass");
-    for (const button of document.querySelectorAll("[data-liuli-material-option]")) {
+    const liquid = mode === "liquid-glass";
+    document.body.toggleAttribute("data-liuli-liquid-glass", liquid);
+    for (const button of root.querySelectorAll("[data-liuli-material-option]")) {
         const selected = button.dataset.liuliMaterialOption === mode;
         button.classList.toggle("is-active", selected);
         button.setAttribute("aria-pressed", String(selected));
     }
+    const glow = root.querySelector("[data-liuli-glow-field]");
+    if (glow) {
+        const label = liquid ? "光泽强弱" : GLOW_FIELD.label;
+        glow.querySelector(".liuli-field__label").textContent = label;
+        glow.querySelector("input").setAttribute("aria-label", label);
+        glow.querySelector(".liuli-field__hint").textContent = liquid ? "玻璃表面的反光与边缘高光" : GLOW_FIELD.hint;
+    }
+}
+
+function llChatBackdrop() {
+    try {
+        const raw = localStorage.getItem("liuli-chat-backdrop");
+        if (raw) return JSON.parse(raw);
+    } catch (error) { console.warn("[liuli] 独立聊天背景配置读取失败", error); }
+    return { opacity: 0.10, blur: 0 };
+}
+
+function buildSliderField({ label, min, max, step, hint }) {
+    const field = document.createElement("div");
+    field.className = "liuli-field";
+    const row = document.createElement("div");
+    row.className = "liuli-field__row";
+    const name = document.createElement("div");
+    name.className = "liuli-field__label";
+    name.textContent = label;
+    const value = document.createElement("div");
+    value.className = "liuli-field__value";
+    row.append(name, value);
+
+    const slider = document.createElement("input");
+    slider.type = "range";
+    slider.className = "liuli-slider";
+    slider.min = min;
+    slider.max = max;
+    slider.step = step;
+    slider.setAttribute("aria-label", label);
+    field.append(row, slider);
+
+    if (hint) {
+        const description = document.createElement("div");
+        description.className = "liuli-field__hint";
+        description.textContent = hint;
+        field.appendChild(description);
+    }
+    return { field, slider, value };
+}
+
+function llApplyChatBackdrop(root = document) {
+    const value = llChatBackdrop();
+    document.body.style.setProperty("--ll-chat-overlay-opacity", String(value.opacity));
+    document.body.style.setProperty("--ll-chat-overlay-blur", value.blur ? "blur(" + value.blur + "px) saturate(1.6)" : "none");
+    for (const input of root.querySelectorAll("[data-liuli-chat-backdrop]")) {
+        const key = input.dataset.liuliChatBackdrop;
+        input.value = value[key];
+        input.style.setProperty("--liuli-pct", (Number(input.value) / Number(input.max)) * 100 + "%");
+        const output = input.closest(".liuli-field").querySelector(".liuli-field__value");
+        output.textContent = key === "blur" ? value[key] + "px" : Math.round(value[key] * 100) + "%";
+    }
+}
+
+function buildChatBackdropControls(host) {
+    const title = document.createElement("div");
+    title.className = "liuli-panel__group";
+    title.textContent = "独立聊天背景";
+    host.appendChild(title);
+    for (const [key, label, max, step] of [
+        ["opacity", "亚克力遮罩浓度", 1, 0.01], ["blur", "背景模糊", 40, 1]
+    ]) {
+        const { field, slider: input } = buildSliderField({ label, min: 0, max, step });
+        input.dataset.liuliChatBackdrop = key;
+        input.addEventListener("input", () => {
+            const value = llChatBackdrop();
+            value[key] = Number(input.value);
+            llLocalAppearance("liuli-chat-backdrop", JSON.stringify(value));
+            llApplyChatBackdrop();
+        });
+        input.addEventListener("change", () => {
+            void llPersistAppearance("liuli-chat-backdrop", JSON.stringify(llChatBackdrop()));
+        });
+        host.appendChild(field);
+    }
+    llApplyChatBackdrop(host);
 }
 
 function buildMaterialControls(host) {
@@ -2912,7 +3023,6 @@ function buildMaterialControls(host) {
     }
     row.append(label, controls);
     host.appendChild(row);
-    llApplyMaterial();
 }
 
 function buildModeControls(host) {
@@ -2971,6 +3081,31 @@ function buildDiagSection(host) {
     desc.className = "liuli-diag-desc";
     desc.textContent = "把环境、插件状态、日志、UI/壁纸状态打成 zip（不含聊天记录；设置页截图默认包含）。遇到「启动报错」「换了壁纸不显示」「设置页像原生控件」时，导出这个包发给开发者即可。";
     block.appendChild(desc);
+
+    const reloadButton = llBtn("重新加载主题样式", "ghost");
+    const reloadStatus = document.createElement("div");
+    reloadStatus.className = "liuli-diag-hint";
+    reloadStatus.textContent = "重新读取所有已打开窗口的主题 CSS。主进程、preload 和脚本改动需重启 QQ。";
+    reloadButton.addEventListener("click", async () => {
+        const api = window.liuli_api;
+        if (!api || typeof api.reloadStyles !== "function") {
+            reloadStatus.textContent = "请完全重启 QQ 一次以启用样式重载接口。";
+            return;
+        }
+        reloadButton.disabled = true;
+        reloadStatus.textContent = "正在重新加载主题样式…";
+        try {
+            const result = await api.reloadStyles();
+            reloadStatus.textContent = result.failed
+                ? "已更新 " + result.loaded + " 个窗口，" + result.failed + " 个窗口失败，请查看日志。"
+                : "已重新加载 " + result.loaded + " 个窗口的主题样式。";
+        } catch (error) {
+            reloadStatus.textContent = "加载失败：" + error.message;
+        } finally {
+            reloadButton.disabled = false;
+        }
+    });
+    block.append(reloadButton, reloadStatus);
 
     const checkRow = document.createElement("label");
     checkRow.className = "liuli-diag-check";
@@ -3170,8 +3305,7 @@ function buildVeilRow(veilKey, settings) {
  * ------------------------------------------------------------
  * 每个页签一个 div.liuli-tabpage，原有分组原样移进对应页；
  * 不显示的页只加 hidden（display: none），**不销毁 DOM**，原因：
- *   1. storage 同步按 document.querySelectorAll(".liuli-slider") 的下标取滑条，
- *      数量必须恒等于 FIELDS.length；
+ *   1. 材质与遮罩滑条按 FIELDS 的顺序同步，独立聊天背景另用自己的配置；
  *   2. 「遮罩颜色」分段按钮的刷新登记表 llVeilSegRefreshers 拿的是节点引用，
  *      节点一旦被移出文档就再也刷不到。
  * 选中的页签存 localStorage("liuli-settings-tab")，无效值回到第一页（外观）。
@@ -3301,32 +3435,9 @@ function buildPanelContent(host, settings) {
 
     const inputs = {};
     for (const f of FIELDS) {
-        const wrap = document.createElement("div");
-        wrap.className = "liuli-field";
-        const row = document.createElement("div");
-        row.className = "liuli-field__row";
-        const label = document.createElement("div");
-        label.className = "liuli-field__label";
-        label.textContent = f.label;
-        const value = document.createElement("div");
-        value.className = "liuli-field__value";
-        row.appendChild(label);
-        row.appendChild(value);
-        wrap.appendChild(row);
-
-        const slider = document.createElement("input");
-        slider.type = "range";
-        slider.className = "liuli-slider";
-        slider.min = f.min;
-        slider.max = f.max;
-        slider.step = f.step;
+        const { field: wrap, slider, value } = buildSliderField(f);
+        if (f === GLOW_FIELD) wrap.dataset.liuliGlowField = "";
         slider.value = settings[f.key];
-        wrap.appendChild(slider);
-
-        const hint = document.createElement("div");
-        hint.className = "liuli-field__hint";
-        hint.textContent = f.hint;
-        wrap.appendChild(hint);
 
         const sync = () => {
             const v = Number(slider.value);
@@ -3345,11 +3456,14 @@ function buildPanelContent(host, settings) {
         pageLook.appendChild(wrap);
     }
 
+    llApplyMaterial(host);
+
     // 两条遮罩共用的说明（需求 A.4 要求的提示文字）
     const veilNote = document.createElement("div");
     veilNote.className = "liuli-field__hint liuli-veil__note";
     veilNote.textContent = "遮罩颜色：「亮」盖一层白，「暗」盖一层黑。";
     pageLook.appendChild(veilNote);
+    buildChatBackdropControls(pageLook);
 
     /* ── 其余各页：原有分组函数原样调用，只是容器从 host 换成对应页 ── */
     buildRoleControls(pageColor, function (roles) {
@@ -3373,7 +3487,11 @@ function buildPanelContent(host, settings) {
     reset.style.cssText = "cursor:pointer;color:var(--ll-brand);margin-top:14px;";
     reset.textContent = "恢复默认";
     reset.addEventListener("click", async () => {
-        const materialSaved = llPersistAppearance(LL_MATERIAL_KEY, "classic");
+        const materialSaved = Promise.all([
+            llPersistAppearance(LL_MATERIAL_KEY, "classic"),
+            llPersistAppearance("liuli-chat-backdrop", null)
+        ]).then(results => ({ok: results.every(result => result.ok)}));
+        llApplyChatBackdrop();
         llApplyMaterial();
         Object.assign(settings, DEFAULT_SETTINGS);
         for (const f of FIELDS) {
@@ -3396,6 +3514,7 @@ function buildPanelContent(host, settings) {
         if (!confirm("恢复全部默认设置？包括布局、明暗、壁纸、字体等，需要重启 QQ 生效。")) return;
         const ok = await llResetAll();
         llApplyMaterial();
+        llApplyChatBackdrop();
         Object.assign(settings, DEFAULT_SETTINGS);
         for (const f of FIELDS) {
             inputs[f.key].value = settings[f.key];
@@ -3431,6 +3550,8 @@ async function initPanel() {
 }
 
 (async () => {
+    if (shouldSkipTheme()) return;
+
     /* 数据目录被整个删掉时（主进程 resetPending 返回 wipe=true）：
      * 先把 localStorage 里的 liuli 设置清干净、配置回默认，再走正常启动流程，
      * 这样这次启动呈现的就是默认样子。任何失败都只 warn，绝不挡启动。 */
@@ -3455,19 +3576,14 @@ async function initPanel() {
     try { await llRestoreAppearance(true); }
     catch (e) { console.warn("[liuli] 外观设置恢复失败:", e); }
     llApplyMaterial();
+    llApplyChatBackdrop();
     llSubscribeAppearance();
     // 先恢复壁纸文件，再取色/绘制/读取界面状态，避免启动时拿到空 localStorage。
     try { await llWallpaperLoadDisk(true); }
     catch (e) { console.warn("[liuli] 壁纸文件恢复失败:", e); }
     llWallpaperSubscribeFile();
     try {
-        const chunks = [];
-        for (const file of FILES) {
-            // wallpaper.css 是可选的本地默认壁纸（不随仓库发布），没有就跳过
-            try { chunks.push(await loadText(file)); }
-            catch (e) { if (!OPTIONAL_FILES.has(file)) throw e; }
-        }
-        ensureStyle().textContent = chunks.join("\n");
+        await llReloadStyles();
         document.body.dataset.liuliTheme = "dsh";
         llApplyFont();
 

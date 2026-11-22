@@ -220,10 +220,44 @@ body[data-liuli-nav-pin] #liuli-nav-handle:not(#ll) {
 
 /* macOS：独立聊天窗口高清壁纸 */
 body:not([data-liuli-scope="main"]):has(.chat-msg-area) {
-    --ll-aux-opacity: 0.10;
+    --ll-aux-opacity: var(--ll-chat-overlay-opacity, 0.10);
 }
 
 body:not([data-liuli-scope="main"]):has(.chat-msg-area) #app::after {
+    backdrop-filter: var(--ll-chat-overlay-blur, none) !important;
+    -webkit-backdrop-filter: var(--ll-chat-overlay-blur, none) !important;
+}
+
+/* 独立个人资料页头部，使用实际资料卡容器。 */
+body[data-hash="#/main-profile"] .profile__body > .buddy-profile {
+  box-sizing: border-box !important;
+  padding: 12px 16px !important;
+  height: auto !important;
+  min-height: 120px;
+  align-items: center;
+}
+body[data-hash="#/main-profile"] .buddy-profile .info-wrapper {
+  min-width: 0;
+}
+
+/* 资料卡右侧操作区参与卡片排版，避免固定偏移停留在外边缘。 */
+body[data-hash="#/main-profile"] .profile__body > .buddy-profile {
+  position: relative;
+}
+body[data-hash="#/main-profile"] .profile__body > .buddy-profile > :last-child:not(.info-wrapper) {
+  position: relative !important;
+  inset: auto !important;
+  transform: none !important;
+  flex: 0 0 auto !important;
+  min-width: 40px;
+  margin: 0 0 0 auto !important;
+  align-self: center;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  body[data-hash="#/chat"] #app::after {
+    background: rgb(var(--ll-acrylic)) !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
+  }
 }

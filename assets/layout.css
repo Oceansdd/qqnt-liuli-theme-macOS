@@ -55,6 +55,14 @@ body {
   width: calc(100% - var(--ll-dock-gap)) !important;
 }
 
+/* 独立聊天外卡沿圆角裁切，滚动由内层列表负责。 */
+body[data-hash="#/chat"] .recent-contact:not(#ll) {
+  overflow: clip !important;
+}
+body[data-hash="#/chat"] .recent-contact :is(.recent-contact-list, .viewport-list) {
+  border: none !important;
+}
+
 /* ── header：按用户要求不加材质（2026-10-28），只保留与正文卡的间距 ── */
 .aio > .chat-header {
   margin: 0 0 var(--ll-dock-gap) var(--ll-dock-gap) !important;
@@ -899,13 +907,13 @@ body:not([data-liuli-scope="main"]) #liuli-nav-handle {
  * position:fixed，改成 relative 后脱离视口约束，窗口按内容高度一路长到 16216px。
  * 改为反过来：#app 自建层叠上下文，壁纸和材质两层压到 z-index:-1，
  * 普通流内容天然画在负 z-index 层之上，不用碰任何 QQ 元素。 */
-body:not([data-liuli-scope="main"]) #app {
+body[data-liuli-scope]:not([data-liuli-scope="main"]) #app {
   isolation: isolate;
 }
-body:not([data-liuli-scope="main"]) #app::before {
+body[data-liuli-scope]:not([data-liuli-scope="main"]) #app::before {
   z-index: -2 !important;
 }
-body:not([data-liuli-scope="main"]) #app::after {
+body[data-liuli-scope]:not([data-liuli-scope="main"]) #app::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -925,6 +933,15 @@ body[data-hash^="#/av"] #app {
 body[data-hash^="#/av"] #app::before,
 body[data-hash^="#/av"] #app::after {
   content: none !important;
+}
+/* 空白池化页保留透明，进入实际路由后再绘制壁纸和亚克力。 */
+body[data-hash="#/blank"] #app {
+  background-color: transparent !important;
+}
+body[data-hash="#/blank"] #app::before,
+body[data-hash="#/blank"] #app::after {
+  content: none !important;
+  display: none !important;
 }
 /* 独立窗口里 QQ 写死的实底（深色 rgb(34,34,34) / 浅色 rgb(229,238,255)） */
 body:not([data-liuli-scope="main"]) .draggable-view__container:not(.window-title-bar):not(#ll):not(#ll),
@@ -1491,33 +1508,33 @@ body .q-dialog > .q-dialog-main:not(#ll):not(#ll) {
  * 关闭态压在浅灰轨道上就成了一个深色小点。改成 M3 开关：
  *   关：轨道 surface + outline 描边，滑块 outline 色
  *   开：轨道 brand，滑块 on-brand */
-body .q-switch:not(#ll) {
+body:not([data-liuli-scope="setting"]) .q-switch:not(#ll) {
   background: rgba(var(--ll-on-glass-rgb), 0.1) !important;
   box-shadow: inset 0 0 0 1.5px var(--ll-stroke-1, rgba(var(--ll-on-glass-rgb), 0.4)) !important;
   transition: background-color 160ms ease, box-shadow 160ms ease !important;
 }
-body .q-switch:not(#ll) .q-switch__handle {
+body:not([data-liuli-scope="setting"]) .q-switch:not(#ll) .q-switch__handle {
   background: var(--ll-stroke-1, var(--ll-on-glass-3)) !important;
   transition: transform 200ms var(--ll-ease-spring, ease), background-color 160ms ease !important;
 }
-body .q-switch.is-active:not(#ll) {
+body:not([data-liuli-scope="setting"]) .q-switch.is-active:not(#ll) {
   background: var(--ll-brand) !important;
   box-shadow: none !important;
 }
-body .q-switch.is-active:not(#ll) .q-switch__handle {
+body:not([data-liuli-scope="setting"]) .q-switch.is-active:not(#ll) .q-switch__handle {
   background: var(--ll-on-brand) !important;
 }
-body .q-switch.is-disabled:not(#ll) {
+body:not([data-liuli-scope="setting"]) .q-switch.is-disabled:not(#ll) {
   opacity: 0.45 !important;
 }
 
 /* 开关滑块：真正看得见的圆点是 .q-switch__handle::before（QQ 用 --icon_white 上色，
  * 本主题把它映射成 on-brand 深色，关闭态就成了浅轨道上的深蓝点）。伪元素一起改。 */
-body .q-switch:not(#ll) .q-switch__handle::before {
+body:not([data-liuli-scope="setting"]) .q-switch:not(#ll) .q-switch__handle::before {
   background: var(--ll-stroke-1, var(--ll-on-glass-3)) !important;
   border-radius: 50% !important;
 }
-body .q-switch.is-active:not(#ll) .q-switch__handle::before {
+body:not([data-liuli-scope="setting"]) .q-switch.is-active:not(#ll) .q-switch__handle::before {
   background: var(--ll-on-brand) !important;
 }
 

@@ -1,55 +1,409 @@
 /* 主窗口的 Liquid Glass 风格。沿用现有材质层和定位规则。 */
-body[data-liuli-scope="main"][data-liuli-liquid-glass] {
-  --ll-liquid-edge: rgb(255 255 255 / 0.48);
-  --ll-liquid-sheen: linear-gradient(155deg, rgb(255 255 255 / 0.24), transparent 60%);
-  --ll-liquid-depth: rgb(26 36 54 / 0.16);
+body[data-liuli-liquid-glass] {
+  --ll-glow-strength: 0 !important;
 }
 
-body[data-liuli-scope="main"][data-liuli-liquid-glass][data-liuli-dark="1"] {
-  --ll-liquid-edge: rgb(255 255 255 / 0.21);
-  --ll-liquid-sheen: linear-gradient(155deg, rgb(255 255 255 / 0.11), transparent 60%);
-  --ll-liquid-depth: rgb(0 0 0 / 0.34);
+body:is([data-liuli-scope="main"], [data-liuli-scope="setting"], [data-hash="#/main-profile"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] {
+  --ll-liquid-edge: rgb(255 255 255 / calc(0.12 + 0.66 * var(--ll-gloss-strength, 0.15)));
+  --ll-liquid-control-opacity: 0.30;
+  --ll-liquid-control-bg:
+    linear-gradient(145deg, rgb(255 255 255 / calc(0.45 * var(--ll-gloss-strength, 0.15))), transparent 38%,
+      rgb(255 255 255 / calc(0.08 * var(--ll-gloss-strength, 0.15))) 76%,
+      rgb(255 255 255 / calc(0.26 * var(--ll-gloss-strength, 0.15)))),
+    rgba(var(--ll-acrylic), var(--ll-liquid-control-opacity));
+  --ll-liquid-control-blur: blur(10px) saturate(1.35);
+  --ll-liquid-control-shadow: inset 0 1px 1px var(--ll-liquid-edge), inset 1px 0 1px rgb(255 255 255 / 0.18), inset 0 -1px 1px rgb(0 0 0 / 0.16), 0 4px 14px var(--ll-liquid-depth);
+  --ll-liquid-sheen: linear-gradient(155deg, rgb(255 255 255 / calc(0.32 * var(--ll-gloss-strength, 0.15))), transparent 60%);
+  --ll-liquid-depth-rgb: 26 36 54;
+  --ll-liquid-depth-opacity: 0.27;
+  --ll-liquid-depth: rgb(var(--ll-liquid-depth-rgb) /
+    calc(var(--ll-liquid-depth-opacity) * var(--ll-shadow-strength, 0.6) * var(--ll-liquid-depth-scale, 1)));
+  --ll-liquid-card-shadow:
+    inset 0 1px 1px var(--ll-liquid-edge),
+    inset 1px 0 1px rgb(255 255 255 / 0.14),
+    inset 0 -1px 1px rgb(0 0 0 / 0.20),
+    0 4px 14px var(--ll-liquid-depth);
 }
 
-body[data-liuli-scope="main"][data-liuli-liquid-glass] :is(.container-sidebar, .recent-contact) {
+body:is([data-liuli-scope="main"], [data-liuli-scope="setting"], [data-hash="#/main-profile"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass][data-liuli-dark="1"] {
+  --ll-liquid-edge: rgb(255 255 255 / calc(0.12 + 0.48 * var(--ll-gloss-strength, 0.15)));
+  --ll-liquid-control-opacity: 0.42;
+  --ll-liquid-sheen: linear-gradient(155deg, rgb(255 255 255 / calc(0.22 * var(--ll-gloss-strength, 0.15))), transparent 60%);
+  --ll-liquid-depth-rgb: 0 0 0;
+  --ll-liquid-depth-opacity: 0.57;
+}
+
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] :is(.container-sidebar, .recent-contact) {
   --ll-liquid-panel-bg: var(--ll-liquid-sheen), rgba(var(--ll-acrylic), var(--ll-material-opacity));
   background: var(--ll-liquid-panel-bg) !important;
   box-shadow:
     inset 0 1px 0 var(--ll-liquid-edge),
     inset 0 0 0 1px rgba(var(--ll-on-glass-rgb), 0.08),
-    0 3px 12px var(--ll-liquid-depth),
-    0 0 calc(8px + 26px * var(--ll-glow-strength, 0.15)) rgba(var(--ll-brand-rgb), calc(var(--ll-glow-strength, 0.15) * 0.55)) !important;
+    0 3px 12px var(--ll-liquid-depth) !important;
 }
 
-body[data-liuli-scope="main"][data-liuli-liquid-glass]:not([data-liuli-tb="native"]) .window-title-bar .window-control-area {
-  background: var(--ll-liquid-sheen), rgba(var(--ll-acrylic), var(--ll-pill-opacity)) !important;
-  box-shadow: inset 0 1px 0 var(--ll-liquid-edge), 0 3px 10px var(--ll-liquid-depth) !important;
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass]:not([data-liuli-tb="native"]) .window-title-bar .window-control-area {
+  background: var(--ll-liquid-control-bg) !important;
+  backdrop-filter: var(--ll-liquid-control-blur) !important;
+  -webkit-backdrop-filter: var(--ll-liquid-control-blur) !important;
+  box-shadow: var(--ll-liquid-control-shadow) !important;
 }
 
 /* 只装饰已有菜单伪元素，避免给固定定位的子菜单建立新的定位参照。 */
-body[data-liuli-scope="main"][data-liuli-liquid-glass] .q-context-menu.aio-right-click-menu:not(.is-pure):not(#ll)::before {
-  background: var(--ll-liquid-sheen), var(--ll-menu-bg, var(--ll-float-bg)) !important;
-  box-shadow: inset 0 1px 0 var(--ll-liquid-edge), 0 5px 14px var(--ll-liquid-depth) !important;
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .q-context-menu.aio-right-click-menu:not(.is-pure):not(#ll)::before {
+  background: var(--ll-liquid-control-bg) !important;
+  backdrop-filter: var(--ll-liquid-control-blur) !important;
+  -webkit-backdrop-filter: var(--ll-liquid-control-blur) !important;
+  box-shadow: var(--ll-liquid-control-shadow) !important;
+}
+
+/* 顶部操作组绘制整体胶囊，保留原有菜单定位上下文。 */
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .aio > .chat-header .panel-header__action {
+  background: var(--ll-liquid-control-bg) !important;
+  border-radius: 999px !important;
+  box-shadow: var(--ll-liquid-control-shadow) !important;
+}
+
+/* 小按钮沿用原来的点击面积，输入按钮位于独立覆盖层。 */
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .contact-top-bar .contact-adder-btn,
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] #liuli-emoji-btn,
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] #liuli-func-toggle,
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] #liuli-bar-pins .liuli-bar-btn {
+  background: var(--ll-liquid-control-bg) !important;
+  border-radius: 999px !important;
+  box-shadow: var(--ll-liquid-control-shadow) !important;
+  color: var(--ll-on-glass) !important;
+}
+
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] :is(#liuli-emoji-btn, #liuli-func-toggle, #liuli-bar-pins .liuli-bar-btn):is(:hover, [data-open="1"]),
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .contact-top-bar .contact-adder-btn:hover {
+  background: var(--ll-liquid-sheen), rgba(var(--ll-brand-rgb), 0.28) !important;
+  color: var(--ll-on-glass) !important;
+}
+
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] :is(#liuli-emoji-btn, #liuli-func-toggle, #liuli-bar-pins .liuli-bar-btn, .contact-top-bar .contact-adder-btn):focus-visible {
+  outline: 2px solid var(--ll-brand) !important;
+  outline-offset: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  body[data-liuli-scope="main"][data-liuli-liquid-glass]:not([data-liuli-tb="native"]) .window-title-bar .window-control-area {
+  body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] :is(#liuli-emoji-btn, #liuli-func-toggle, #liuli-bar-pins .liuli-bar-btn, .contact-top-bar .contact-adder-btn) {
+    transition: none !important;
+  }
+}
+
+/* 更多菜单的内容层已有独立材质，外层继续承担定位。 */
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .bar-more-menu-inner:not(.q-context-menu):not(#ll) {
+  background: var(--ll-liquid-control-bg) !important;
+  backdrop-filter: var(--ll-liquid-control-blur) !important;
+  -webkit-backdrop-filter: var(--ll-liquid-control-blur) !important;
+  box-shadow: var(--ll-liquid-control-shadow) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass]:not([data-liuli-tb="native"]) .window-title-bar .window-control-area {
     transition: none !important;
   }
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  body[data-liuli-scope="main"][data-liuli-liquid-glass] :is(.container-sidebar, .recent-contact) {
+  body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] {
+    --ll-liquid-control-bg: rgb(var(--ll-acrylic));
+    --ll-liquid-control-blur: none;
+  }
+
+  body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] :is(.container-sidebar, .recent-contact) {
     --ll-liquid-panel-bg: var(--ll-liquid-sheen), rgb(var(--ll-acrylic));
     --ll-liquid-panel-blur: none;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
 
-  body[data-liuli-scope="main"][data-liuli-liquid-glass]:not([data-liuli-tb="native"]) .window-title-bar .window-control-area,
-  body[data-liuli-scope="main"][data-liuli-liquid-glass] .q-context-menu.aio-right-click-menu:not(.is-pure):not(#ll)::before {
+  body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass]:not([data-liuli-tb="native"]) .window-title-bar .window-control-area,
+  body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .q-context-menu.aio-right-click-menu:not(.is-pure):not(#ll)::before {
     background: var(--ll-liquid-sheen), rgb(var(--ll-acrylic)) !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] :is(#liuli-emoji-btn, #liuli-func-toggle, #liuli-bar-pins .liuli-bar-btn):is(:hover, [data-open="1"]),
+  body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .contact-top-bar .contact-adder-btn:hover {
+    background: rgb(var(--ll-acrylic)) !important;
+  }
+}
+
+/* 亮色控件使用更实的底色与深色边缘，浅色壁纸上仍可辨识。 */
+body:is([data-liuli-scope="main"], [data-liuli-scope="setting"], [data-hash="#/main-profile"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass][data-liuli-dark="0"] {
+  --ll-liquid-control-opacity: 0.68;
+  --ll-liquid-edge: rgba(var(--ll-on-glass-rgb), calc(0.12 + 0.22 * var(--ll-gloss-strength, 0.15)));
+  --ll-liquid-control-shadow: inset 0 1px 1px rgb(255 255 255 / calc(0.25 + 0.65 * var(--ll-gloss-strength, 0.15))),
+    inset 0 0 0 1px var(--ll-liquid-edge), 0 3px 10px var(--ll-liquid-depth);
+}
+
+/* 固定导航的布局规则具有 ID 级优先级，在同等优先级上替换材质阴影。 */
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .global-container .container-content > .container-sidebar:not(#ll):not(#ll),
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .global-container .container-content > .container-sidebar:not(#ll):not(#ll):is(:hover, :has(:focus-visible)) {
+  box-shadow: var(--ll-liquid-control-shadow) !important;
+}
+
+/* 怀旧模式的标题和图标跟随琉璃文字色。 */
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .contact-top-bar,
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .nostalgic-header-main {
+  --header-oldTheme-text-color: var(--ll-on-glass);
+}
+
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .contact-top-bar .contact-adder-btn .q-icon {
+  color: var(--ll-on-glass) !important;
+}
+
+/* 联系人与会话列表共享承载卡片材质。 */
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .contact-layout .contact-layout__left-area > .contact:not(#ll) {
+  background: var(--ll-liquid-sheen), rgba(var(--ll-acrylic), var(--ll-material-opacity)) !important;
+  box-shadow: var(--ll-liquid-control-shadow) !important;
+}
+
+/* 导航项只绘制状态表面，不叠加背景模糊。 */
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .sidebar__nav > .nav-item:is(:hover, :focus-visible) {
+  background: rgba(var(--ll-on-glass-rgb), 0.10) !important;
+  border-radius: 14px !important;
+  box-shadow: inset 0 1px 0 var(--ll-liquid-edge) !important;
+}
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .sidebar__nav > .nav-item:is([aria-selected="true"], :has(.tab-item-mask.is-active)) {
+  background: rgba(var(--ll-brand-rgb), 0.20) !important;
+  border-radius: 14px !important;
+  box-shadow: inset 0 1px 0 var(--ll-liquid-edge) !important;
+}
+
+/* 输入卡保留原有布局和编辑器绘制方式。 */
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .aio .chat-input-area {
+  background: var(--ll-liquid-sheen), rgba(var(--ll-acrylic), max(0.48, var(--ll-material-opacity))) !important;
+  box-shadow: var(--ll-liquid-control-shadow) !important;
+}
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .chat-input-area > .operation .send-btn-wrap {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.5), inset 0 -1px 1px rgb(0 0 0 / 0.18), 0 2px 6px var(--ll-liquid-depth) !important;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .contact-layout .contact-layout__left-area > .contact:not(#ll),
+  body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .aio .chat-input-area {
+    background: rgb(var(--ll-acrylic)) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+/* 联系人页的分段切换沿用 QQ 的 tab 状态。 */
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .contact-layout .contact :is(.tab-item, [role="tab"]) {
+  border-radius: 999px !important;
+}
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .contact-layout .contact :is(.tab-item:has(.tab-item-mask.is-active), [role="tab"][aria-selected="true"]) {
+  background: var(--ll-liquid-control-bg) !important;
+  box-shadow: var(--ll-liquid-control-shadow) !important;
+}
+
+/* 固定导航与联系人卡片之间保留独立卡片的留白。 */
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass][data-liuli-nav-pin] .contact-layout .contact-layout__left-area > .contact:not(#ll) {
+  margin-left: var(--ll-dock-gap) !important;
+  width: calc(100% - var(--ll-dock-gap)) !important;
+}
+
+/* 输入覆盖层的圆钮沿用可用的采样层，补充明确的球面边缘。 */
+body[data-liuli-liquid-glass]:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"])) #liuli-input-overlay :is(#liuli-func-toggle, .liuli-bar-btn) {
+  background: var(--ll-liquid-control-bg) !important;
+  box-shadow: var(--ll-liquid-control-shadow) !important;
+  backdrop-filter: var(--ll-liquid-control-blur) !important;
+  -webkit-backdrop-filter: var(--ll-liquid-control-blur) !important;
+}
+
+/* 搜索展开面板只覆盖已有可见材质层。 */
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .main-search .search-result:not(#ll) {
+  background: var(--ll-liquid-control-bg) !important;
+  box-shadow: var(--ll-liquid-control-shadow) !important;
+  backdrop-filter: var(--ll-liquid-control-blur) !important;
+  -webkit-backdrop-filter: var(--ll-liquid-control-blur) !important;
+}
+
+/* 右侧公告与成员共用外层卡片，背景由渲染器内联变量消费。 */
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] :is(.group-box, .right-sidebar) {
+  --ll-liquid-detail-bg: var(--ll-liquid-sheen), rgba(var(--ll-acrylic), max(0.35, var(--ll-material-opacity)));
+  box-shadow: var(--ll-liquid-control-shadow) !important;
+}
+
+/* 下拉内容与子菜单使用既有浮层变量，定位外壳保持原有结构。 */
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] {
+  --ll-menu-bg: var(--ll-liquid-control-bg);
+  --ll-float-blur: var(--ll-liquid-control-blur);
+  --ll-float-shadow: var(--ll-liquid-control-shadow);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] :is(.group-box, .right-sidebar) {
+    --ll-liquid-detail-bg: rgb(var(--ll-acrylic));
+    --ll-liquid-detail-blur: none;
+  }
+}
+
+/* 选中背景保留强调色与侧边指示，只增加表面高光。 */
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .recent-contact .recent-contact-item.recent-contact-item--selected:not(#ll)::before {
+  background:
+    linear-gradient(var(--ll-on-primary-container), var(--ll-on-primary-container)) no-repeat 0 50% / 3px 18px,
+    linear-gradient(155deg, rgb(255 255 255 / 0.18), transparent 65%),
+    var(--ll-primary-container) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.42), inset 0 0 0 1px rgba(var(--ll-on-glass-rgb), 0.10), var(--ll-shadow) !important;
+}
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .recent-contact .recent-contact-item:not(.recent-contact-item--selected):hover {
+  background: rgba(var(--ll-on-glass-rgb), 0.08) !important;
+  box-shadow: inset 0 1px 0 var(--ll-liquid-edge) !important;
+  border-radius: 12px !important;
+}
+
+/* 群资料抽屉只替换已有伪元素材质。 */
+body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .aio .side-panel:not(#ll)::before {
+  background: var(--ll-liquid-control-bg) !important;
+  backdrop-filter: var(--ll-liquid-control-blur) !important;
+  -webkit-backdrop-filter: var(--ll-liquid-control-blur) !important;
+  box-shadow: inset 0 1px 0 var(--ll-liquid-edge) !important;
+}
+
+/* 设置页采用稳定内容底色，导航选中项与操作控件使用轻玻璃表面。 */
+body[data-liuli-scope="setting"][data-liuli-liquid-glass] .setting-tab {
+  background: linear-gradient(160deg, rgb(255 255 255 / 0.05), transparent), rgba(var(--ll-acrylic), 0.40) !important;
+}
+body[data-liuli-scope="setting"][data-liuli-liquid-glass] .setting-tab .nav-item-active {
+  background: rgba(var(--ll-brand-rgb), 0.20) !important;
+  box-shadow: inset 0 1px 0 var(--ll-liquid-edge) !important;
+}
+body[data-liuli-scope="setting"][data-liuli-liquid-glass] :is(.q-button, .q-pulldown-menu-button, .liuli-seg) {
+  box-shadow: inset 0 1px 0 var(--ll-liquid-edge), inset 0 0 0 1px rgba(var(--ll-on-glass-rgb), 0.12) !important;
+}
+body[data-liuli-scope="setting"][data-liuli-liquid-glass] .liuli-seg__item.is-active {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.30) !important;
+}
+body[data-liuli-scope="setting"][data-liuli-liquid-glass] :is(.q-button, .q-pulldown-menu-button):focus-visible {
+  outline: 2px solid var(--ll-brand);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-transparency: reduce) {
+  body[data-liuli-scope="setting"][data-liuli-liquid-glass] .setting-tab {
+    background: rgb(var(--ll-acrylic)) !important;
+  }
+}
+
+/* 会话列表内层使用外卡材质。 */
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .recent-contact :is(.recent-contact-list, .viewport-list) {
+  box-shadow: none !important;
+}
+body[data-liuli-scope="main"][data-liuli-liquid-glass] .recent-contact :is(.recent-contact-list, .viewport-list) {
+  border: none !important;
+}
+
+/* 原有外卡使用单层玻璃表面与方向性边缘高光。 */
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .recent-contact:not(#ll),
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .two-col-layout__aside > .recent-contact:not(#ll) {
+  outline: none !important;
+  box-shadow: var(--ll-liquid-card-shadow) !important;
+}
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .contact-layout .contact-layout__left-area > .contact:not(#ll) {
+  outline: none !important;
+  box-shadow: var(--ll-liquid-card-shadow) !important;
+}
+
+/* 独立资料页头部卡片。 */
+body[data-hash="#/main-profile"][data-liuli-liquid-glass] .profile__body > .buddy-profile {
+  background: var(--ll-liquid-control-bg) !important;
+  backdrop-filter: var(--ll-liquid-control-blur) !important;
+  -webkit-backdrop-filter: var(--ll-liquid-control-blur) !important;
+  box-shadow: var(--ll-liquid-control-shadow) !important;
+}
+@media (prefers-reduced-transparency: reduce) {
+  body[data-hash="#/main-profile"][data-liuli-liquid-glass] .profile__body > .buddy-profile {
+    background: rgb(var(--ll-acrylic)) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+/* 文字提示采用紧凑圆角，避免继承浮层卡片的大圆角与投影。 */
+body[data-liuli-liquid-glass] :is(.q-tooltips__content, .q-tooltips-v2, .sidebar-tooltips__content) {
+  border-radius: 8px !important;
+  padding: 4px 8px !important;
+  min-height: 0 !important;
+  font-size: 12px !important;
+  line-height: 18px !important;
+  background: rgba(var(--ll-acrylic), 0.92) !important;
+  box-shadow: inset 0 1px 0 rgba(var(--ll-on-glass-rgb), 0.12),
+    0 2px 6px rgb(0 0 0 / calc(0.27 * var(--ll-shadow-strength, 0.6))) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+@media (prefers-reduced-transparency: reduce) {
+  body[data-liuli-liquid-glass] :is(.q-tooltips__content, .q-tooltips-v2, .sidebar-tooltips__content) {
+    background: rgb(var(--ll-acrylic)) !important;
+  }
+}
+
+/* 顶部操作组的两端按钮位于 func-bar-top 内。 */
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .panel-header__action > .func-bar-top > :is(:first-child, :last-child),
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .panel-header__action > .func-bar-top > :is(:first-child, :last-child) .icon-item {
+  border-radius: 50% !important;
+}
+
+/* 顶部工具按钮及其悬停背景共用圆形轮廓。 */
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .panel-header__action .func-bar-top :is(.bar-icon, .icon-item),
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .panel-header__action .func-bar-top .bar-icon::before,
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .panel-header__action .func-bar-top .bar-icon::after,
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .panel-header__action .func-bar-top .icon-item::before,
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .panel-header__action .func-bar-top .icon-item::after {
+  border-radius: 50% !important;
+}
+
+
+/* 搜索框的材质随窗口激活状态变化。 */
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .main-search .q-search__input:not(#ll):not(#ll) {
+  background: var(--ll-liquid-control-bg) !important;
+  border: 1px solid transparent !important;
+  border-radius: 999px !important;
+  box-shadow: var(--ll-liquid-control-shadow) !important;
+}
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .main-search .q-search__input > input {
+  background: transparent !important;
+  color: var(--ll-on-glass) !important;
+}
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .main-search .q-search__input > input::placeholder {
+  color: var(--ll-on-glass-2) !important;
+  opacity: 1;
+}
+
+/* 使用输入光标提示焦点，避免原生描边叠在玻璃边缘上。 */
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .main-search:has(.q-search__input:focus-within),
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .main-search .main-search__search-input:has(.q-search__input:focus-within),
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .main-search .q-search__input > input:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .main-search .q-search__input:not(#ll):not(#ll):focus-within {
+  outline: none !important;
+}
+@media (prefers-reduced-transparency: reduce) {
+  body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .main-search .q-search__input:not(#ll):not(#ll) {
+    background: rgb(var(--ll-acrylic)) !important;
+  }
+}
+
+/* 非激活窗口使用较平的玻璃底与细边。 */
+body:is([data-liuli-scope="main"], [data-liuli-scope="setting"], [data-hash="#/main-profile"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass]:not([data-liuli-window-focused]) {
+  --ll-liquid-edge: rgba(var(--ll-on-glass-rgb), calc(0.08 + 0.18 * var(--ll-gloss-strength, 0.15)));
+  --ll-liquid-depth-scale: 0.45;
+  --ll-liquid-sheen: linear-gradient(155deg, rgb(255 255 255 / calc(0.10 * var(--ll-gloss-strength, 0.15))), transparent 60%);
+  --ll-liquid-control-bg: var(--ll-liquid-sheen), rgba(var(--ll-acrylic), var(--ll-liquid-control-opacity));
+  --ll-liquid-control-shadow: inset 0 0 0 1px var(--ll-liquid-edge), 0 2px 8px var(--ll-liquid-depth);
+  --ll-liquid-card-shadow: var(--ll-liquid-control-shadow);
+}
+@media (prefers-reduced-transparency: reduce) {
+  body:is([data-liuli-scope="main"], [data-liuli-scope="setting"], [data-hash="#/main-profile"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass]:not([data-liuli-window-focused]) {
+    --ll-liquid-control-bg: rgb(var(--ll-acrylic));
+    --ll-liquid-control-blur: none;
   }
 }

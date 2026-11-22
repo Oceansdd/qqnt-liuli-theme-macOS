@@ -318,6 +318,10 @@ body[data-liuli-dark="0"] .message-container [class*="time"] {
   color: var(--ll-on-glass-2) !important;
   text-shadow: none !important;
 }
+/* 文件卡片可直接挂在消息内容外壳，避免继承亮色聊天区的光晕。 */
+body[data-liuli-dark="0"] .chat-msg-area .message-container > .message-content__wrapper {
+  text-shadow: none !important;
+}
 /* 气泡里有底色，不需要描边；阴影会让字发虚（2026-10-30） */
 .chat-msg-area .msg-content-container,
 .chat-msg-area .msg-content-container * {
