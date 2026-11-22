@@ -101,7 +101,9 @@ function hydrateLayout() {
 
 export function loadLayout() {
     const raw = readStorageObject(KEY) || layoutCache || {};
-    return Object.assign({}, DEFAULTS, raw);
+    const cfg = Object.assign({}, DEFAULTS, raw);
+    cfg.navHidden = [...new Set(cfg.navHidden.map(stableNavKey))];
+    return cfg;
 }
 function saveLayout(cfg) {
     layoutEditVersion++;
@@ -112,7 +114,9 @@ function saveLayout(cfg) {
 }
 function loadSeen() {
     const raw = readStorageObject(SEEN_KEY) || seenCache || {};
-    return Object.assign({ menu: [], bar: [], nav: [] }, raw);
+    const seen = Object.assign({ menu: [], bar: [], nav: [] }, raw);
+    seen.nav = [...new Set(seen.nav.map(stableNavKey))];
+    return seen;
 }
 function remember(kind, labels) {
     const seen = loadSeen();
@@ -220,6 +224,11 @@ export function nativeBarItem(label) {
 }
 
 /* ════════════════ 3. 左侧边栏 ════════════════ */
+function stableNavKey(key) {
+    return key.replace(/^(上:消息)\s*\d+\+?\s*条未读$/, "$1")
+        .replace(/^(上:联系人)\s*\d+\+?\s*个通知$/, "$1");
+}
+
 function labelOf(n) {
     const own = n.getAttribute("aria-label");
     if (own) return own;
@@ -231,7 +240,7 @@ function navEntries() {
     const out = [];
     document.querySelectorAll(".sidebar__nav > .nav-item").forEach(n => {
         const lab = norm(labelOf(n));
-        if (lab) out.push({ el: n, key: "上:" + lab });
+        if (lab) out.push({ el: n, key: stableNavKey("上:" + lab) });
     });
     document.querySelectorAll(".sidebar__menu .func-menu__item").forEach(n => {
         const lab = norm(labelOf(n));

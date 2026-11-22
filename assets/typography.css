@@ -171,7 +171,8 @@
   letter-spacing: 0.15px !important;
 }
 
-/* 消息正文：可读优先 */
+/* TG 和 TIM 的正文排版。 */
+@scope (body:not([data-liuli-chat-style="classic"])) to (:scope[data-liuli-chat-style="tim"] .msg-content-container.container--personalization) {
 .message .text-element,
 .message .text-normal,
 .msg-content-container .text-element {
@@ -179,6 +180,7 @@
   font-weight: 400 !important;
   line-height: 22px !important;
   letter-spacing: 0.15px !important;
+}
 }
 
 /* 消息里的发送者名：小一号 + 中等字重 */

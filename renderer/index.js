@@ -337,6 +337,7 @@ function normalizeColors() {
             llColorSeen.add(el);
             if (el.dataset.liuliColor) continue;
             if (el.children.length > 0) continue;
+            if (el.closest(".msg-content-container")) continue;
             const text = (el.textContent || "").trim();
             if (!text) continue;
             const color = getComputedStyle(el).color.replace(/\s+/g, " ").trim();
@@ -492,7 +493,9 @@ const LL_RESET_KNOWN_KEYS = [
  * 原有 localStorage 用于即时同步；appearance.json 负责重启持久化。
  * 写失败必须可见，不能再静默吞掉；独立于布局和壁纸两个已验证的存档。 */
 const LL_MATERIAL_KEY = "liuli-material";
-const LL_APPEARANCE_KEYS = ["liuli-color-roles", "liuli-md-render", "liuli-font", "liuli-dsh-mode", LL_MATERIAL_KEY, "liuli-chat-backdrop"];
+const LL_CHAT_STYLE_KEY = "liuli-chat-style";
+const LL_CHAT_STYLES = [["tg", "TG"], ["classic", "原版"], ["tim", "TIM"]];
+const LL_APPEARANCE_KEYS = ["liuli-color-roles", "liuli-md-render", "liuli-font", "liuli-dsh-mode", LL_MATERIAL_KEY, "liuli-chat-backdrop", LL_CHAT_STYLE_KEY];
 let llAppearanceEditVersion = 0;
 let llAppearanceSubscribed = false;
 const llAppearancePending = new Set();
@@ -568,6 +571,7 @@ async function llRestoreAppearance(boot) {
     if (!boot) {
         llApplyMaterial();
         llApplyChatBackdrop();
+        llApplyChatStyle();
         // 其它 QQ 窗口在运行时修改配置时，立即重应用视觉效果。
         try { llApplyFont(); llApplyMode(false); llMarkdownPass(); }
         catch (e) { console.warn("[liuli] appearance 重新应用失败:", e); }
@@ -1096,6 +1100,7 @@ function llSyncPins(overlay) {
  * 这里在每次 tick 把它挪进 .msg-content-container，
  * 挪完打个标记，避免反复搬动。
  */
+const llSenderHomes = new WeakMap();
 function moveSenderIntoBubble() {
     try {
         var containers = document.querySelectorAll(".message-container");
@@ -1103,10 +1108,21 @@ function moveSenderIntoBubble() {
             var mc = containers[i];
             var bubble = mc.querySelector(".msg-content-container");
             if (!bubble) continue;
-            var name = mc.querySelector(".user-name");
+            var name = mc.querySelector(":scope > .user-name") || bubble.querySelector(":scope > .user-name");
             if (!name) continue;
+            if (document.body.dataset.liuliChatStyle !== "tg") {
+                const home = llSenderHomes.get(name);
+                if (home && bubble.contains(name)) {
+                    const parent = mc.contains(home.parent) ? home.parent : mc;
+                    parent.insertBefore(name, home.next?.parentNode === parent ? home.next : null);
+                    delete bubble.dataset.liuliNamed;
+                }
+                llSenderHomes.delete(name);
+                continue;
+            }
             if (bubble.contains(name)) continue;
             // 把姓名节点搬到气泡最前面
+            llSenderHomes.set(name, { parent: name.parentNode, next: name.nextSibling });
             bubble.insertBefore(name, bubble.firstChild);
             bubble.dataset.liuliNamed = "1";
         }
@@ -1124,6 +1140,8 @@ function moveSenderIntoBubble() {
  * 取不到名字时退回头像 src。
  */
 function groupMessages() {
+    const style = document.body.dataset.liuliChatStyle;
+    if (style === "classic") return;
     try {
         var list = document.querySelectorAll(".message-container");
         if (list.length === 0) return;
@@ -1147,13 +1165,34 @@ function groupMessages() {
 
         var keys = [];
         for (var i = 0; i < list.length; i++) keys.push(keyOf(list[i]));
+        const tim = style === "tim";
+        const textRows = tim ? Array.from(list, row => {
+            const bubble = row.querySelector(".msg-content-container");
+            const content = bubble?.querySelector(":scope > .message-content");
+            return !!content &&
+                !bubble.matches(".container--personalization, .ark-msg-content-container, .ptt-message__container") &&
+                !!content.querySelector('.text-element, .face-element img[data-role="qqFace"], .face-element img.face-element__icon') &&
+                !content.querySelector('.pic-element, .file-element, .video-element, .market-face-element, .ptt-element, .ark-view-message, .forward-msg, [class*="lottie"]');
+        }) : [];
+        const adjacent = (a, b) => {
+            const first = a.closest(".ml-item");
+            const second = b.closest(".ml-item");
+            return a.closest(".chat-msg-area") === b.closest(".chat-msg-area") &&
+                (!first || !second || first === second || first.nextElementSibling === second);
+        };
 
         for (var j = 0; j < list.length; j++) {
             var mc = list[j];
             var key = keys[j];
-            if (!key) { mc.dataset.liuliG = ""; continue; }
-            var prevSame = j > 0 && keys[j - 1] === key;
-            var nextSame = j < list.length - 1 && keys[j + 1] === key;
+            var prevSame = key && j > 0 && keys[j - 1] === key && adjacent(list[j - 1], mc);
+            var nextSame = key && j < list.length - 1 && keys[j + 1] === key && adjacent(mc, list[j + 1]);
+            if (tim && textRows[j]) {
+                const prevText = prevSame && textRows[j - 1];
+                const nextText = nextSame && textRows[j + 1];
+                const corners = prevText ? (nextText ? "mid" : "last") : (nextText ? "first" : "single");
+                if (mc.dataset.liuliTimText !== corners) mc.dataset.liuliTimText = corners;
+            } else if (mc.hasAttribute("data-liuli-tim-text")) mc.removeAttribute("data-liuli-tim-text");
+            if (!key) { if (mc.dataset.liuliG) delete mc.dataset.liuliG; continue; }
             var g;
             if (!prevSame && !nextSame) g = "single";
             else if (!prevSame && nextSame) g = "first";
@@ -1172,6 +1211,7 @@ function groupMessages() {
  * 原位置用气泡计算（transform 不影响气泡的 rect）。
  */
 function stickAvatars() {
+    if (document.body.dataset.liuliChatStyle === "classic") return;
     try {
         var vp = document.querySelector(".chat-msg-area__vlist") || document.querySelector(".chat-msg-area");
         if (!vp) return;
@@ -1524,7 +1564,7 @@ function installSideListObserver() {
 }
 
 function liuliMessagePass() {
-    moveSenderIntoBubble();
+    if (document.body.dataset.liuliChatStyle === "tg") moveSenderIntoBubble();
     groupMessages();
     markQuoteRoots();
     scheduleStick();          // 读位置的活放到下一帧，不在 DOM 变动回调里强制排版
@@ -1537,36 +1577,40 @@ function liuliMessagePass() {
  * 最大 id 还新的，才是"刚收到/刚发出"的消息。换会话时只记基线、不播。 */
 var llMsgSeen = { chat: null, max: null };
 function llChatKey() {
-    var t = document.querySelector(".aio .chat-header .panel-header__title");
-    return t ? (t.textContent || "").replace(/\s+/g, " ").trim() : "";
+    return llGroupKey();
 }
 function llMsgId(el) {
     try { return el && /^\d+$/.test(el.id) ? BigInt(el.id) : null; } catch (e) { return null; }
 }
+function llAtLiveTail() {
+    const area = document.querySelector(".chat-msg-area");
+    const scroller = area?.querySelector(".ml-root, #ml-root, .chat-msg-area__vlist") || area;
+    if (!scroller) return false;
+    const reversed = scroller.scrollTop < 0 || getComputedStyle(scroller).flexDirection === "column-reverse";
+    return reversed ? Math.abs(scroller.scrollTop) <= 4
+        : scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 4;
+}
 function llMotionPass(added) {
     try {
         var key = llChatKey();
+        if (!key) return;
         var items = document.querySelectorAll(".chat-msg-area .ml-item[id]");
         if (!items.length) return;
         if (key !== llMsgSeen.chat) {
-            var first = llMsgSeen.chat !== null;
             llMsgSeen.chat = key;
             var m = null;
             items.forEach(function (it) { var v = llMsgId(it); if (v !== null && (m === null || v > m)) m = v; });
             llMsgSeen.max = m;
-            // 换会话：消息区整体轻轻浮上来
-            if (first && !LL_REDUCED) {
-                var area = document.querySelector(".chat-msg-area");
-                if (area && area.animate) area.animate([{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }],
-                    { duration: 280, easing: LL_EASE });
-            }
             return;
         }
-        if (LL_REDUCED || !added || !added.length) return;
+        if (!added || !added.length) return;
+        const scrolling = performance.now() - (window.__llScrollT || 0) < 600;
+        const animate = !LL_REDUCED && !scrolling && llAtLiveTail();
         added.forEach(function (it) {
             var v = llMsgId(it);
             if (v === null || llMsgSeen.max === null || v <= llMsgSeen.max) return;
             llMsgSeen.max = v;
+            if (!animate) return;
             var mc = it.querySelector(".message-container");
             var w = it.querySelector(".message-content__wrapper");
             if (!mc || !w || !w.animate) return;
@@ -2787,6 +2831,7 @@ try {
     window.addEventListener("storage", function (e) {
         if (shouldSkipTheme()) return;
         if (e.key === LL_MATERIAL_KEY || e.key === null) llApplyMaterial();
+        if (e.key === LL_CHAT_STYLE_KEY || e.key === null) llApplyChatStyle();
         if (e.key === "liuli-chat-backdrop" || e.key === null) llApplyChatBackdrop();
         if (e.key === LL_MODE_KEY) { llApplyMode(false); if (typeof llModeRefresh === "function") llModeRefresh(); }
         // 配色（颜色角色）在别的窗口改了：重新派生一次色板
@@ -2925,6 +2970,33 @@ function llApplyMaterial(root = document) {
     }
 }
 
+function llApplyChatStyle(root = embeddedPanel || document) {
+    const body = document.body;
+    const saved = localStorage.getItem(LL_CHAT_STYLE_KEY);
+    const style = LL_CHAT_STYLES.some(([value]) => value === saved) ? saved : "tg";
+    if (body.dataset.liuliChatStyle !== style) {
+        const previous = body.dataset.liuliChatStyle;
+        body.dataset.liuliChatStyle = style;
+        if (previous) {
+            if (previous === "tg") moveSenderIntoBubble();
+            if (style === "classic") {
+                for (const avatar of body.querySelectorAll(".avatar-span[data-liuli-ty]")) {
+                    avatar.style.removeProperty("transform");
+                    delete avatar.dataset.liuliTy;
+                }
+            } else {
+                liuliMessagePass();
+            }
+            window.__liuliMsgObs?.takeRecords();
+        }
+    }
+    for (const button of root.querySelectorAll("[data-liuli-chat-style-option]")) {
+        const selected = button.dataset.liuliChatStyleOption === style;
+        button.classList.toggle("is-active", selected);
+        button.setAttribute("aria-pressed", String(selected));
+    }
+}
+
 function llChatBackdrop() {
     try {
         const raw = localStorage.getItem("liuli-chat-backdrop");
@@ -3000,24 +3072,24 @@ function buildChatBackdropControls(host) {
     llApplyChatBackdrop(host);
 }
 
-function buildMaterialControls(host) {
+function buildAppearanceChoice(host, title, options, attribute, key, apply) {
     const row = document.createElement("div");
     row.className = "liuli-wp-fit";
     const label = document.createElement("span");
-    label.textContent = "材质模式";
+    label.textContent = title;
     const controls = document.createElement("div");
     controls.className = "liuli-seg";
     controls.setAttribute("role", "group");
     controls.setAttribute("aria-label", label.textContent);
-    for (const [mode, text] of [["classic", "经典琉璃"], ["liquid-glass", "Liquid Glass 风格"]]) {
+    for (const [mode, text] of options) {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "liuli-seg__item";
         button.textContent = text;
-        button.dataset.liuliMaterialOption = mode;
+        button.dataset[attribute] = mode;
         button.addEventListener("click", () => {
-            void llPersistAppearance(LL_MATERIAL_KEY, mode);
-            llApplyMaterial();
+            void llPersistAppearance(key, mode);
+            apply();
         });
         controls.appendChild(button);
     }
@@ -3431,7 +3503,8 @@ function buildPanelContent(host, settings) {
     group.className = "liuli-panel__group";
     group.textContent = "材质";
     pageLook.appendChild(group);
-    buildMaterialControls(pageLook);
+    buildAppearanceChoice(pageLook, "材质模式", [["classic", "经典琉璃"], ["liquid-glass", "Liquid Glass 风格"]],
+        "liuliMaterialOption", LL_MATERIAL_KEY, llApplyMaterial);
 
     const inputs = {};
     for (const f of FIELDS) {
@@ -3472,6 +3545,12 @@ function buildPanelContent(host, settings) {
         applyDynamicPalette();
     });
     buildWallpaperControls(pageWp);      // 壁纸选择 / 裁剪适应 / 壁纸亮度提示
+    const chatGroup = document.createElement("div");
+    chatGroup.className = "liuli-panel__group";
+    chatGroup.textContent = "聊天消息";
+    pageLayout.appendChild(chatGroup);
+    buildAppearanceChoice(pageLayout, "聊天气泡", LL_CHAT_STYLES, "liuliChatStyleOption", LL_CHAT_STYLE_KEY, llApplyChatStyle);
+    llApplyChatStyle(host);
     buildLayoutSection(pageLayout);      // layout-custom.js 的全部分组
     const textGroup = document.createElement("div");
     textGroup.className = "liuli-panel__group";
@@ -3514,6 +3593,7 @@ function buildPanelContent(host, settings) {
         if (!confirm("恢复全部默认设置？包括布局、明暗、壁纸、字体等，需要重启 QQ 生效。")) return;
         const ok = await llResetAll();
         llApplyMaterial();
+        llApplyChatStyle();
         llApplyChatBackdrop();
         Object.assign(settings, DEFAULT_SETTINGS);
         for (const f of FIELDS) {
@@ -3527,6 +3607,8 @@ function buildPanelContent(host, settings) {
 }
 
 let embeddedSettings = null;
+// LiteLoader 在打开插件设置之前会把视图留在 document 之外。
+let embeddedPanel = null;
 // 暴露重建入口：设置页窗口里的面板是加载时构建的，改了代码需要能热重建
 window.__liuliRebuildPanel = function () {
     const box = document.getElementById("liuli-embedded");
@@ -3577,6 +3659,7 @@ async function initPanel() {
     catch (e) { console.warn("[liuli] 外观设置恢复失败:", e); }
     llApplyMaterial();
     llApplyChatBackdrop();
+    llApplyChatStyle();
     llSubscribeAppearance();
     // 先恢复壁纸文件，再取色/绘制/读取界面状态，避免启动时拿到空 localStorage。
     try { await llWallpaperLoadDisk(true); }
@@ -3612,7 +3695,7 @@ async function initPanel() {
         applyOverrides();
         fixContrast();
         normalizeColors();
-        setInterval(() => { if (window.__liuliPause) return; if (performance.now() - (window.__llScrollT || 0) < 600) return; /* 正在滚动：这一轮跳过，免得滚动中卡一下 */ if (document.querySelector(".q-dialog-modal")) { mountInputBar(); return; } applyOverrides(); fixContrast(); normalizeColors(); keepWindowControlsVisible(); mountInputBar(); groupMessages(); stickAvatars(); markQuoteRoots(); moveSenderIntoBubble(); ensureHoverEntries(); llWatchContactList(); llGroupMembersPass(); llMarkdownPass(); llLayoutPass(); }, 1500);
+        setInterval(() => { if (window.__liuliPause) return; if (performance.now() - (window.__llScrollT || 0) < 600) return; /* 正在滚动：这一轮跳过，免得滚动中卡一下 */ if (document.querySelector(".q-dialog-modal")) { mountInputBar(); return; } applyOverrides(); fixContrast(); normalizeColors(); keepWindowControlsVisible(); mountInputBar(); liuliMessagePass(); ensureHoverEntries(); llWatchContactList(); llGroupMembersPass(); llMarkdownPass(); llLayoutPass(); }, 1500);
         try { installLayout(function () { llSyncPins(); }); } catch (e) { console.warn("[liuli-dsh-theme] layout failed:", e && e.message); }
         try { installArkExternal(window.liuli_api); } catch (e) { console.warn("[liuli-dsh-theme] ark external failed:", e && e.message); }
         installMarkdownObserver();
@@ -3649,6 +3732,7 @@ export const onSettingWindowCreated = async view => {
     box.className = "liuli-embedded";
     try {
         view.appendChild(box);
+        embeddedPanel = box;
         buildPanelContent(box, embeddedSettings);
         // 契约 S3：诊断快照要能证明"面板构建了但样式没生效"还是"面板压根没构建"
         try { notePanelBuild(true); } catch (e) {}
@@ -3719,58 +3803,12 @@ function llMarkdownPass() {
     } catch (e) { /* 静默 */ }
 }
 
-/* ---------- 消息入场：级联 ----------
- * 只给两种情况做动画，滚动加载历史时不做（否则一滚就闪）：
- *   1. 刚切到一个会话：600ms 内出现的消息，从下往上依次浮入，每条错开 28ms，最多 14 条
- *   2. 新消息：加到列表最末尾的那条
- * 动画只用 opacity + transform，交给合成层，不触发排版。 */
-let llEnterPeer = "";
-let llEnterUntil = 0;
-const LL_ENTER_MAX = 14;
-
-function llCurrentPeer() {
-    const rec = llMsgRecordOf(document.querySelector(".chat-msg-area .message"));
-    return rec ? String(rec.peerUid) : "";
-}
-
-function llAnimateEnter(items) {
-    if (!items.length || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    // 越靠下（越新）越先出来
-    items.sort((a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().top);
-    items.slice(0, LL_ENTER_MAX).forEach((el, i) => {
-        el.style.setProperty("--ll-enter-i", String(i));
-        el.classList.remove("ll-enter");
-        void el.offsetWidth;
-        el.classList.add("ll-enter");
-        clearTimeout(el.__llEnterT);
-        el.__llEnterT = setTimeout(() => el.classList.remove("ll-enter"), 400 + i * 28);
-    });
-}
-
-function llHandleAdded(records) {
-    const added = [];
-    for (const r of records) {
-        for (const n of r.addedNodes) {
-            if (n.nodeType === 1 && n.classList.contains("ml-item")) added.push(n);
-        }
-    }
-    if (!added.length) return;
-    const now = Date.now();
-    const peer = llCurrentPeer();
-    if (peer && peer !== llEnterPeer) { llEnterPeer = peer; llEnterUntil = now + 600; }
-    if (now < llEnterUntil) { llAnimateEnter(added); return; }
-    // 新消息：节点是列表里最后一条
-    const fresh = added.filter(n => !n.nextElementSibling);
-    if (fresh.length) llAnimateEnter(fresh);
-}
-
 function installMarkdownObserver() {
     if (window.__llMdObserver) return;
     // 性能：DOM 变动后 150ms 才跑一次（滚动期间合并成一次），不再每帧跑
     let timer = 0;
     const run = () => { timer = 0; llMarkdownPass(); llAtPass(); };
-    window.__llMdObserver = new MutationObserver(records => {
-        try { llHandleAdded(records); } catch (e) {}
+    window.__llMdObserver = new MutationObserver(() => {
         if (!timer) timer = setTimeout(run, 150);
     });
     window.__llMdObserver.observe(document.body, { childList: true, subtree: true });

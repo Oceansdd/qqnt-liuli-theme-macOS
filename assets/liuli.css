@@ -262,6 +262,7 @@ body[data-liuli-dark="0"] .q-tag--orange .title {
  * 宽匹配会把整行染成一条长色带（"消息样式异常"就是这个）。
  * ════════════════════════════════════════════════════════════ */
 
+@scope (body:not([data-liuli-chat-style="classic"])) to (:scope[data-liuli-chat-style="tim"] .msg-content-container.container--personalization) {
 .msg-content-container {
   border-radius: var(--ll-radius) !important;
   backdrop-filter: blur(12px) saturate(1.4) !important;
@@ -281,6 +282,7 @@ body[data-liuli-dark="0"] .q-tag--orange .title {
   background: rgba(var(--ll-brand-rgb), 0.32) !important;
   border: 1px solid rgba(var(--ll-brand-rgb), 0.4) !important;
   color: var(--ll-on-glass) !important;
+}
 }
 
 /* 消息时间戳：QQ 用深色胶囊浮在壁纸上，很突兀。
@@ -318,19 +320,27 @@ body[data-liuli-dark="0"] .message-container [class*="time"] {
   color: var(--ll-on-glass-2) !important;
   text-shadow: none !important;
 }
-/* 文件卡片可直接挂在消息内容外壳，避免继承亮色聊天区的光晕。 */
-body[data-liuli-dark="0"] .chat-msg-area .message-container > .message-content__wrapper {
-  text-shadow: none !important;
-}
-/* 气泡里有底色，不需要描边；阴影会让字发虚（2026-10-30） */
+/* 正文和卡片已有自己的底色，只有壁纸上的文字需要阴影。 */
+.chat-msg-area .message-container > .message-content__wrapper,
 .chat-msg-area .msg-content-container,
 .chat-msg-area .msg-content-container * {
   text-shadow: none !important;
 }
-
+@scope (body:not([data-liuli-chat-style="classic"])) to (:scope[data-liuli-chat-style="tim"] .msg-content-container.container--personalization) {
 .chat-msg-area .message,
 .chat-msg-area .text-element {
   color: var(--ll-on-glass) !important;
+}
+}
+
+/* 暗色 QQ 的预览摘要使用单独的淡色 token。浅底装扮跟随自己的正文色。 */
+@scope (body[data-liuli-chat-style="classic"][data-liuli-dark="1"]) {
+.msg-content-container.container--personalization.container--self {
+  --nt_bubble_guest_text_2_60_2_alpha: var(--on_bubble_host_text);
+}
+.msg-content-container.container--personalization.container--others {
+  --nt_bubble_guest_text_2_60_2_alpha: var(--on_bubble_guest_text, var(--bubble_guest_text));
+}
 }
 
 /* ════════════════════════════════════════════════════════════

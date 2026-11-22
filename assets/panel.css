@@ -691,8 +691,7 @@
  * ------------------------------------------------------------
  * 页签栏吸在设置区顶部：设置页的滚动容器是 .setting-layout .setting-main
  * （见 settings-page.css「设置页主区可滚动」一节），sticky 以它为参照。
- * 底色跟设置页同源（--ll-acrylic + --ll-material-opacity），不写死颜色；
- * 不透明度至少 0.86，滚过去的滑条 / 按钮不会从字缝里透出来。
+ * 底色采用设置页的亚克力颜色，挡住从页签下方滚过的内容。
  * ════════════════════════════════════════════════════════════ */
 .liuli-tabs {
   position: sticky;
@@ -707,7 +706,7 @@
   padding: 4px;
   margin: 0 0 10px;
   border-radius: 14px;
-  background: rgba(var(--ll-acrylic), max(var(--ll-material-opacity, 0.86), 0.86));
+  background: rgb(var(--ll-acrylic));
   backdrop-filter: var(--ll-material-blur);
   -webkit-backdrop-filter: var(--ll-material-blur);
   box-shadow: 0 1px 0 rgba(var(--ll-tint-rgb, var(--ll-specular)), 0.08),

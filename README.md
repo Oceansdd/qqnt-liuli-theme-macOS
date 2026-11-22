@@ -9,7 +9,7 @@
 **QQNT 主题 · macOS 兼容改造与配置持久化修复**
 
 [![macOS](https://img.shields.io/badge/macOS-27-888?style=flat-square)](#支持的环境)
-[![QQNT](https://img.shields.io/badge/QQNT-6.9.88--44725-1d9bf0?style=flat-square)](#支持的环境)
+[![QQNT](https://img.shields.io/badge/QQNT-6.9.97--50776-1d9bf0?style=flat-square)](#支持的环境)
 [![LiteLoaderQQNT](https://img.shields.io/badge/LiteLoaderQQNT-1.4.1-7c6ce6?style=flat-square)](https://github.com/LiteLoaderQQNT/LiteLoaderQQNT)
 
 </div>
@@ -17,7 +17,7 @@
 从壁纸取色，通过 Material Color Utilities 派生 Material 3 动态配色，为 QQNT 提供亚克力玻璃风格界面。**无需 BetterQQNT。**
 
 > [!NOTE]
-> 默认使用经典琉璃的 **CSS 亚克力材质**。功能分支中的 **Liquid Glass 风格** 使用 CSS 绘制，尚待 macOS QQNT 实机验证。
+> 默认使用经典琉璃的 **CSS 亚克力材质**。**Liquid Glass 风格** 使用 CSS 绘制，可在外观设置中切换。
 
 ## 📸 预览
 
@@ -26,7 +26,7 @@
 <br />
 <sub>原项目示意图；macOS 的实际窗口布局可能不同</sub>
 <br /><br />
-<img src="assets/screenshots/settings.jpg" alt="琉璃设置页预览（原项目示意）" width="560" />
+<img src="assets/screenshots/settings.png" alt="琉璃 macOS 设置页预览" width="560" />
 </div>
 
 ## ✨ 功能
@@ -37,7 +37,7 @@
 | 🪟 | **独立聊天窗口清晰壁纸** | 取消独立聊天窗口额外的 24px 背景模糊，并降低辅助遮罩透明度，不影响消息气泡 |
 | 🎨 | **动态色板** | 根据壁纸实时派生 Material 3 色板；自定义强调色、选中项及双方气泡角色 |
 | 🧊 | **亚克力玻璃** | 会话列表、详情栏、弹层与菜单使用半透明材质 |
-| 💬 | **TG 式聊天布局** | 连续消息合并、名字进入气泡、单行输入栏和悬浮顶部控件 |
+| 💬 | **三种聊天气泡** | TG、原版、TIM 可切换；TG 使用琉璃气泡，原版与 TIM 保留 QQ 个性装扮 |
 | 📝 | **Markdown 行内渲染** | 支持代码、粗体、斜体、删除线、剧透等行内语法（功能移植自 BetterQQNT） |
 | 🔔 | **@ 高亮** | 区分 @我、@全体成员与 @其他人 |
 | 🌐 | **卡片用浏览器打开** | 支持对部分 QQ 小程序卡片提取网页链接并交给默认浏览器 |
@@ -54,7 +54,7 @@
 | 项目 | 已实际验证版本 |
 |---|---|
 | macOS | **27** |
-| QQNT for macOS | **6.9.88-44725** |
+| QQNT for macOS | **6.9.97-50776** |
 | LiteLoaderQQNT | **1.4.1** |
 | Electron | **37.1.0** |
 | Chromium | **138.0.7204.35** |
@@ -121,7 +121,7 @@ assets/                     其他样式、MCU、图标与预览素材
 
 在独立聊天窗口中，原主题额外施加了半透明层和模糊效果；本 Fork 调整为**辅助遮罩约 10%、额外背景模糊关闭**。这样可以保持聊天背景清晰，而消息气泡等仍按主题样式显示。
 
-如需微调该效果，可编辑 `assets/layout-custom.css` 尾部的 `--ll-aux-opacity` 值；例如 `0.05` 更清晰、`0.20` 更柔和。它不同于设置页的壁纸明暗遮罩。
+可在「琉璃 → 外观 → 独立聊天背景」调整亚克力遮罩浓度与背景模糊，设置在重启后保留。它不同于壁纸明暗遮罩。
 
 ### 壁纸或配置重启后丢失？
 
@@ -162,7 +162,7 @@ assets/                     其他样式、MCU、图标与预览素材
 ## 📋 后续计划
 
 - 在更多 macOS / QQNT 版本上验证兼容性。
-- 更新 macOS 实机截图，替换上游 Windows 示例。
+- 补充 macOS 聊天界面实机截图。
 - 继续完善字体、壁纸和明暗模式细节。
 - 探索 macOS **原生 Liquid Glass** 的可行性；**目前尚未实现**。
 

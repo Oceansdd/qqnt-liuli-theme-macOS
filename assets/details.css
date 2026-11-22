@@ -82,8 +82,9 @@
  * QQ 有两套类名：
  *   .text--link（双横）→ 已经跟随 --text_link = 品牌色
  *   .text-link （单横）→ 实测是 rgb(235,224,225) 的近白色，没走主题
- * 两个都要品牌色。
+ * 琉璃气泡与界面链接使用主题配色，原版气泡保留 QQ 的链接样式。
  * ════════════════════════════════════════════════════════════ */
+@scope (body) to (body[data-liuli-chat-style="classic"] .msg-content-container) {
 .text-link,
 .text--link,
 a.text-link,
@@ -97,8 +98,10 @@ a.text-link,
 .text--link:hover {
   color: var(--ll-brand-hover) !important;
 }
+}
 
 /* 自己的气泡是浅底：链接用第三色，不能跟正文一个颜色（上面 .text-element * 的规则会把它染成正文色） */
+@scope (body:not([data-liuli-chat-style="classic"])) {
 .message-container .msg-content-container.container--self .text-link,
 .message-container .msg-content-container.container--self .text--link,
 .message-container .msg-content-container.container--self .text-element .text-link,
@@ -107,6 +110,7 @@ a.text-link,
 .message-container .msg-content-container.container--self .text-element [class*="text-link"] * {
   color: var(--ll-bubble-self-link, var(--ll-tertiary)) !important;
   text-decoration-color: color-mix(in srgb, var(--ll-bubble-self-link, var(--ll-tertiary)) 55%, transparent) !important;
+}
 }
 
 /* 自己发的转发卡片：和自己的气泡同色 */

@@ -348,7 +348,7 @@ ipcMain.handle("LiteLoader.liuli.wallpaperReset", (event) => {
  * 只接收白名单键，不接受路径或任意数据；写入先落临时文件再原子替换。 */
 const APPEARANCE_FILE = path.join(LIULI_DATA_DIR, "appearance.json");
 const APPEARANCE_KEYS = Object.freeze([
-    "liuli-color-roles", "liuli-md-render", "liuli-font", "liuli-dsh-mode", "liuli-material", "liuli-chat-backdrop"
+    "liuli-color-roles", "liuli-md-render", "liuli-font", "liuli-dsh-mode", "liuli-material", "liuli-chat-backdrop", "liuli-chat-style"
 ]);
 const APPEARANCE_MAX_BYTES = 8 * 1024;
 function validateAppearance(key, raw) {
@@ -365,6 +365,10 @@ function validateAppearance(key, raw) {
     }
     if (key === "liuli-material") {
         if (raw !== "classic" && raw !== "liquid-glass") throw new Error("invalid material mode");
+        return raw;
+    }
+    if (key === "liuli-chat-style") {
+        if (!["tg", "classic", "tim"].includes(raw)) throw new Error("invalid chat style");
         return raw;
     }
     if (key === "liuli-chat-backdrop") {
