@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <defs>
+    <linearGradient id="liuli-nav-top" x1="5" y1="5" x2="18" y2="11" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d9f8ff"/>
+      <stop offset="1" stop-color="#a9adff"/>
+    </linearGradient>
+    <linearGradient id="liuli-nav-left" x1="5" y1="9" x2="12" y2="20" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#a5edff"/>
+      <stop offset="1" stop-color="#4f9ce9"/>
+    </linearGradient>
+    <linearGradient id="liuli-nav-right" x1="12" y1="9" x2="19" y2="18" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#9189ee"/>
+      <stop offset="1" stop-color="#535ac3"/>
+    </linearGradient>
+  </defs>
+  <path d="m12 3.2 7 4.1-7 4.1-7-4.1z" fill="url(#liuli-nav-top)"/>
+  <path d="M5 7.3v8.7l7 4.1v-8.7z" fill="url(#liuli-nav-left)"/>
+  <path d="M19 7.3V16l-7 4.1v-8.7z" fill="url(#liuli-nav-right)"/>
+  <path d="m12 3.2 7 4.1V16l-7 4.1L5 16V7.3z" fill="none" stroke="#525db5" stroke-width="1.15" stroke-linejoin="round"/>
+  <path d="m5.5 7.6 6.5 3.8 6.5-3.8M12 11.4v8.1" fill="none" stroke="#def4ff" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M5 12.4c-2.1 1.7-3.2 3.3-2.7 4.2.9 1.6 5.9.6 11.3-2.4 4.2-2.3 7.3-5 8-6.8" fill="none" stroke="#496ab5" stroke-width="2.35" stroke-linecap="round"/>
+  <path d="M5 12.4c-2.1 1.7-3.2 3.3-2.7 4.2.9 1.6 5.9.6 11.3-2.4 4.2-2.3 7.3-5 8-6.8" fill="none" stroke="#d7f4ff" stroke-width="1.2" stroke-linecap="round"/>
+</svg>

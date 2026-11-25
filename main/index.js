@@ -134,6 +134,7 @@ function normalizeLayout(value) {
         menuCompact: value.menuCompact === true,
         menuOrder: layoutStrings(value.menuOrder),
         barOrder: layoutStrings(value.barOrder),
+        barRight: typeof value.barRight === "string" ? value.barRight.slice(0, 256) : "",
         barPinned: Number.isFinite(num) ? Math.max(0, Math.min(6, Math.round(num))) : 1,
         navHidden: layoutStrings(value.navHidden),
         titlebar: value.titlebar === "native" ? "native" : "float",
@@ -347,16 +348,51 @@ ipcMain.handle("LiteLoader.liuli.wallpaperReset", (event) => {
  * 用小 JSON 作权威存档，localStorage 仍负责运行时即时反馈和跨窗口 UI 同步。
  * 只接收白名单键，不接受路径或任意数据；写入先落临时文件再原子替换。 */
 const APPEARANCE_FILE = path.join(LIULI_DATA_DIR, "appearance.json");
+const CHAT_FONT_RANGES = {
+    "liuli-chat-body-size": [12, 24],
+    "liuli-chat-name-size": [10, 14],
+    "liuli-chat-tag-size": [9, 14]
+};
 const APPEARANCE_KEYS = Object.freeze([
-    "liuli-color-roles", "liuli-md-render", "liuli-font", "liuli-dsh-mode", "liuli-material", "liuli-chat-backdrop", "liuli-chat-style"
+    "liuli-color-roles", "liuli-md-render", "liuli-font", "liuli-dsh-mode", "liuli-material", "liuli-chat-backdrop", "liuli-chat-style", "liuli-bubble-size", "liuli-hide-image-names", "liuli-color-source", "liuli-group-owner-color", "liuli-group-admin-color",
+    "liuli-group-title-color", "liuli-group-owner-color-text", "liuli-group-admin-color-text",
+    "liuli-group-title-color-text", "liuli-input-layout", "liuli-hide-empty-logo", "liuli-sender-color", "liuli-selection-strength", "liuli-pin-group", "liuli-pin-color",
+    "liuli-pin-collapsed", ...Object.keys(CHAT_FONT_RANGES)
 ]);
 const APPEARANCE_MAX_BYTES = 8 * 1024;
 function validateAppearance(key, raw) {
     if (!APPEARANCE_KEYS.includes(key)) throw new Error("unsupported appearance key");
     if (raw === null) return null; // 明确恢复对应项的默认值
     if (typeof raw !== "string") throw new Error("appearance value must be a string or null");
-    if (key === "liuli-md-render") {
-        if (raw !== "0" && raw !== "1") throw new Error("invalid markdown setting");
+    if (key === "liuli-selection-strength") {
+        const strength = Number(raw);
+        if (!Number.isInteger(strength) || strength < 15 || strength > 100)
+            throw new Error("invalid selection strength");
+        return String(strength);
+    }
+    if (Object.hasOwn(CHAT_FONT_RANGES, key)) {
+        const [min, max] = CHAT_FONT_RANGES[key];
+        const size = Number(raw);
+        if (!Number.isInteger(size) || size < min || size > max) throw new Error("invalid chat font size");
+        return String(size);
+    }
+    if (key === "liuli-sender-color" || /^liuli-group-(owner|admin|title)-color(?:-text)?$/.test(key)) {
+        if (!/^#[0-9a-f]{6}$/i.test(raw)) throw new Error("invalid label color");
+        return raw.toUpperCase();
+    }
+    if (key === "liuli-input-layout") {
+        if (!["tg", "native"].includes(raw)) throw new Error("invalid input layout");
+        return raw;
+    }
+    if (key === "liuli-color-source") {
+        const value = JSON.parse(raw);
+        if (!value || !["wallpaper", "custom"].includes(value.mode) ||
+            typeof value.hex !== "string" || !/^#[0-9a-f]{6}$/i.test(value.hex))
+            throw new Error("invalid color source");
+        return JSON.stringify({ mode: value.mode, hex: value.hex.toUpperCase() });
+    }
+    if (["liuli-md-render", "liuli-hide-image-names", "liuli-hide-empty-logo", "liuli-pin-group", "liuli-pin-color", "liuli-pin-collapsed"].includes(key)) {
+        if (raw !== "0" && raw !== "1") throw new Error("invalid toggle setting");
         return raw;
     }
     if (key === "liuli-dsh-mode") {
@@ -370,6 +406,13 @@ function validateAppearance(key, raw) {
     if (key === "liuli-chat-style") {
         if (!["tg", "classic", "tim"].includes(raw)) throw new Error("invalid chat style");
         return raw;
+    }
+    if (key === "liuli-bubble-size") {
+        const value = JSON.parse(raw);
+        if (!value || !Number.isInteger(value.scale) || value.scale < 80 || value.scale > 140 ||
+            !Number.isInteger(value.width) || value.width < 40 || value.width > 100)
+            throw new Error("invalid bubble size");
+        return JSON.stringify({ scale: value.scale, width: value.width });
     }
     if (key === "liuli-chat-backdrop") {
         const value = JSON.parse(raw);
@@ -388,7 +431,7 @@ function validateAppearance(key, raw) {
     if (!role || typeof role !== "object" || Array.isArray(role)) throw new Error("invalid color roles");
     const allowed = {
         accent: ["primary", "secondary", "tertiary"],
-        selected: ["primary", "secondary", "tertiary"],
+        selected: ["accent", "primary", "secondary", "tertiary"],
         self: ["primary", "secondary", "tertiary", "solid", "surface", "inverse"],
         others: ["primary", "secondary", "tertiary", "surface"]
     };
@@ -413,7 +456,7 @@ function readAppearance() {
             if (Object.prototype.hasOwnProperty.call(data.values, key))
                 values[key] = validateAppearance(key, data.values[key]);
         }
-        return { exists: true, values };
+        return { exists: true, values, storedValues: data.values };
     } catch (e) {
         log("appearance load failed: " + (e && e.message));
         return { exists: true, values: {}, error: String((e && e.message) || e) };
@@ -448,9 +491,12 @@ ipcMain.handle("LiteLoader.liuli.appearanceLoad", () => ({
 ipcMain.handle("LiteLoader.liuli.appearanceSave", (event, key, raw) => {
     try {
         const value = validateAppearance(key, raw);
+        if (appearanceState.error) throw new Error(appearanceState.error);
         const values = { ...appearanceState.values, [key]: value };
-        writeAppearance(values);
-        appearanceState = { exists: true, values };
+        // 保存只更新当前键，磁盘上的其他值继续保留。
+        const storedValues = { ...appearanceState.storedValues, [key]: value };
+        writeAppearance(storedValues);
+        appearanceState = { exists: true, values, storedValues };
         appearanceNotify(event.sender);
         return { ok: true };
     } catch (e) {
@@ -470,7 +516,7 @@ ipcMain.handle("LiteLoader.liuli.appearanceImport", (event, oldValues) => {
         }
         if (Object.keys(values).length === 0) return { ok: true, imported: false };
         writeAppearance(values);
-        appearanceState = { exists: true, values };
+        appearanceState = { exists: true, values, storedValues: values };
         appearanceNotify(event.sender);
         return { ok: true, imported: true };
     } catch (e) {

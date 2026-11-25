@@ -8,7 +8,7 @@
 
 const KEY = "liuli-layout";
 const SEEN_KEY = "liuli-layout-seen";
-const DEFAULTS = { menuCompact: false, menuOrder: [], barOrder: [], barPinned: 1, navHidden: [], titlebar: "float", navPin: false };
+const DEFAULTS = { menuCompact: false, menuOrder: [], barOrder: [], barPinned: 1, barRight: "", navHidden: [], titlebar: "float", navPin: false };
 
 const ICON_UP = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M7.41 15.41 12 10.83l4.59 4.58L18 14l-6-6-6 6z"/></svg>';
 const ICON_DOWN = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>';
@@ -180,8 +180,24 @@ function watchMenus() {
 }
 
 /* ════════════════ 2. 输入框按钮 ════════════════ */
+export function isInputRendered(el) {
+    if (!el || !el.isConnected || !el.getClientRects().length) return false;
+    const rect = el.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return false;
+    const style = getComputedStyle(el);
+    if (style.visibility === "hidden" || style.visibility === "collapse") return false;
+    for (let node = el; node; node = node.parentElement) {
+        if (getComputedStyle(node).opacity === "0") return false;
+    }
+    return true;
+}
+
+export function getActiveInputArea() {
+    return [...document.querySelectorAll(".chat-input-area")].find(isInputRendered) || null;
+}
+
 function barIcons() {
-    const bar = document.querySelector(".chat-input-area .chat-func-bar");
+    const bar = getActiveInputArea()?.querySelector(".chat-func-bar");
     if (!bar) return [];
     return [...bar.querySelectorAll(".bar-icon")].map(b => {
         const it = b.querySelector(":scope > .icon-item[aria-label]");
@@ -198,24 +214,43 @@ export function barLayout() {
         const i = order.indexOf("表情");
         if (i > 0) { order.splice(i, 1); order.unshift("表情"); }
     }
-    const pinned = Math.max(0, Math.min(order.length, Number(cfg.barPinned) || 0));
-    return { order, pinned: order.slice(0, pinned) };
+    const right = order.includes(cfg.barRight) ? cfg.barRight : "";
+    const leftOrder = order.filter(label => label !== right);
+    const pinned = Math.max(0, Math.min(leftOrder.length, Number(cfg.barPinned) || 0));
+    return { order, right, leftOrder, pinned: leftOrder.slice(0, pinned) };
 }
 
-/* 宫格里的顺序和隐藏；返回要放进输入框的按钮名单 */
-export function applyBar() {
+/* 按输入区宽度保留固定按钮，放不下的按钮归入「更多」。 */
+export function applyBar(width = getActiveInputArea()?.querySelector(".msg-input")?.getBoundingClientRect().width ?? 0) {
+    if (!getActiveInputArea()) return null;
     const icons = barIcons();
-    if (!icons.length) return [];
+    if (!icons.length) return { left: [], right: "" };
     remember("bar", icons.map(x => x.label));
+    if (document.body.dataset.liuliInputLayout === "native") {
+        for (const { el } of icons) {
+            if (!el.matches(".liuli-pinned, .liuli-in-menu")) continue;
+            el.classList.remove("liuli-pinned", "liuli-in-menu");
+            el.style.removeProperty("order");
+        }
+        return { left: [], right: "" };
+    }
+    // 多选或会话切换期间编辑区不可测量，保留现有按钮，恢复后再按实际宽度更新。
+    if (width <= 0) return null;
     const lay = barLayout();
+    const available = new Set(icons.map(({ label }) => label));
+    // 左侧 52px 包含「更多」和留白，右侧 50px 留给发送键，正文至少留 80px。
+    const buttonSpace = width - 52 - 50 - 80;
+    const right = buttonSpace >= 32 && available.has(lay.right) ? lay.right : "";
+    const leftSlots = Math.max(0, Math.floor((buttonSpace - (right ? 32 : 0)) / 32));
+    const left = lay.pinned.filter(label => available.has(label)).slice(0, leftSlots);
     icons.forEach((x, i) => {
-        const pin = lay.pinned.indexOf(x.label) >= 0;
+        const pin = x.label === right || left.includes(x.label);
         x.el.classList.toggle("liuli-pinned", pin);
         x.el.classList.toggle("liuli-in-menu", !pin);
         const k = lay.order.indexOf(x.label);
         x.el.style.setProperty("order", String(k >= 0 ? k : 500 + i));
     });
-    return lay.pinned;
+    return { left, right };
 }
 
 export function nativeBarItem(label) {
@@ -283,9 +318,9 @@ export function applyAll() {
         document.body.toggleAttribute("data-liuli-nav-pin", !!cfg.navPin);
         if (cfg.navPin && document.body.dataset.liuliRNav) delete document.body.dataset.liuliRNav;
         applyNav();
-        applyBar();
+        const bar = applyBar();
         document.querySelectorAll(".q-context-menu.aio-right-click-menu").forEach(applyMenu);
-        if (onBarChange) onBarChange();
+        if (onBarChange) onBarChange(bar);
     } catch (e) { /* 静默 */ }
 }
 
@@ -370,14 +405,25 @@ function sortList(host, items, opts) {
     return draw;
 }
 
-export function buildLayoutControls(host) {
+export function addSettingsGroup(host, title, description, open = false) {
+    const card = el("details", "liuli-settings-group");
+    card.open = open;
+    const header = el("summary", "liuli-settings-group__header");
+    header.append(el("span", "liuli-settings-group__title", title),
+        el("span", "liuli-settings-group__description", description));
+    const content = el("div", "liuli-settings-group__content");
+    card.append(header, content);
+    host.appendChild(card);
+    return content;
+}
+
+export function buildLayoutControls(host, expanded = new Set()) {
     // 设置页若先于磁盘读取完成，恢复后自动重建控件，避免只更新 DOM 样式却显示默认按钮。
     const pending = !layoutHydrated;
     const initialVersion = layoutEditVersion;
     void hydrateLayout().then(restored => {
         if (pending && restored && layoutEditVersion === initialVersion && host.isConnected) {
-            host.innerHTML = "";
-            buildLayoutControls(host);
+            rebuild();
         }
     });
     const cfg = loadLayout();
@@ -385,27 +431,44 @@ export function buildLayoutControls(host) {
     const save = () => saveLayout(cfg);
 
     /* 窗口按钮（#4 #10） */
-    host.appendChild(el("div", "liuli-panel__group", "窗口按钮"));
-    seg(host, "标题栏控件", [["float", "悬浮"], ["native", "常驻（原版）"]], cfg.titlebar === "native" ? "native" : "float", v => { cfg.titlebar = v; save(); });
-    host.appendChild(el("div", "liuli-field__hint", "悬浮：最小化 / 关闭按钮和头像平时隐藏，鼠标移到窗口顶边左右两端时出现。常驻：恢复 QQ 原来的标题栏，按钮一直显示。"));
+    const windowGroup = addSettingsGroup(host, "窗口按钮", "标题栏控件", expanded.has("窗口按钮"));
+    seg(windowGroup, "标题栏控件", [["float", "悬浮"], ["native", "常驻（原版）"]], cfg.titlebar === "native" ? "native" : "float", v => { cfg.titlebar = v; save(); });
+    windowGroup.appendChild(el("div", "liuli-field__hint", "悬浮：最小化 / 关闭按钮和头像平时隐藏，鼠标移到窗口顶边左右两端时出现。常驻：恢复 QQ 原来的标题栏，按钮一直显示。"));
 
     /* 右键菜单 */
-    host.appendChild(el("div", "liuli-panel__group", "右键菜单"));
-    seg(host, "显示方式", [["0", "图标 + 文字"], ["1", "只显示图标"]], cfg.menuCompact ? "1" : "0", v => { cfg.menuCompact = v === "1"; save(); });
-    host.appendChild(el("div", "liuli-field__hint", "调整消息右键菜单里各项的顺序。名单来自你右键过的消息，右键过图片、文件等消息后，对应的菜单项也会出现在这里。"));
+    const menuGroup = addSettingsGroup(host, "右键菜单", "显示方式与菜单排序", expanded.has("右键菜单"));
+    seg(menuGroup, "显示方式", [["0", "图标 + 文字"], ["1", "只显示图标"]], cfg.menuCompact ? "1" : "0", v => { cfg.menuCompact = v === "1"; save(); });
+    menuGroup.appendChild(el("div", "liuli-field__hint", "调整消息右键菜单里各项的顺序。名单来自你右键过的消息，右键过图片、文件等消息后，对应的菜单项也会出现在这里。"));
     const menuItems = mergedOrder(cfg.menuOrder || [], seen.menu);
-    sortList(host, menuItems, { empty: "先在聊天里右键一条消息，菜单项就会出现在这里。", onChange: list => { cfg.menuOrder = list.slice(); save(); } });
+    sortList(menuGroup, menuItems, { empty: "先在聊天里右键一条消息，菜单项就会出现在这里。", onChange: list => { cfg.menuOrder = list.slice(); save(); } });
     const resetMenu = el("div", "liuli-field__hint liuli-lo-reset", "恢复默认顺序");
     resetMenu.addEventListener("click", () => { cfg.menuOrder = []; save(); rebuild(); });
-    host.appendChild(resetMenu);
+    menuGroup.appendChild(resetMenu);
 
     /* 输入框 */
-    host.appendChild(el("div", "liuli-panel__group", "输入框按钮"));
+    const inputGroup = addSettingsGroup(host, "输入框按钮", "按钮数量与排序", expanded.has("输入框按钮"));
     const lay = barLayout();
-    const barItems = lay.order.slice();
-    if (!cfg.barOrder || !cfg.barOrder.length) cfg.barOrder = barItems.slice();
+    const barItems = lay.leftOrder.slice();
+    if (!cfg.barOrder || !cfg.barOrder.length) cfg.barOrder = lay.order.slice();
+    const rightRow = el("label", "liuli-wp-fit liuli-mode-row liuli-bar-right-setting");
+    rightRow.appendChild(el("span", "", "右侧固定按钮"));
+    const rightSelect = el("select", "liuli-bar-right-select");
+    for (const label of ["", ...lay.order]) {
+        const option = el("option", "", label || "无");
+        option.value = label;
+        rightSelect.appendChild(option);
+    }
+    rightSelect.value = lay.right;
+    rightSelect.addEventListener("change", () => {
+        cfg.barRight = rightSelect.value;
+        save();
+        rebuild();
+        host.querySelector(".liuli-bar-right-select")?.focus();
+    });
+    rightRow.appendChild(rightSelect);
+    inputGroup.appendChild(rightRow);
     const pinRow = el("div", "liuli-wp-fit liuli-mode-row");
-    pinRow.appendChild(el("span", "", "输入框里显示的按钮数"));
+    pinRow.appendChild(el("span", "", "左侧固定按钮数"));
     const stepper = el("div", "liuli-seg");
     const minus = el("button", "liuli-seg__item", "−");
     const num = el("span", "liuli-lo-num", "");
@@ -413,14 +476,18 @@ export function buildLayoutControls(host) {
     [minus, plus].forEach(b => { b.type = "button"; });
     stepper.appendChild(minus); stepper.appendChild(num); stepper.appendChild(plus);
     pinRow.appendChild(stepper);
-    host.appendChild(pinRow);
-    host.appendChild(el("div", "liuli-field__hint", "分界线上面的按钮放在输入框里，下面的收进「更多」。用箭头调顺序，把按钮挪过分界线就换了位置。"));
+    inputGroup.appendChild(pinRow);
+    inputGroup.appendChild(el("div", "liuli-field__hint", "分界线上面的按钮固定在左侧，下面的收进「更多」。用箭头调顺序，把按钮挪过分界线就换了位置。"));
     let pinned = lay.pinned.length;
-    const drawBar = sortList(host, barItems, {
+    const drawBar = sortList(inputGroup, barItems, {
         empty: "先打开一个聊天，输入框的按钮就会出现在这里。",
         divider: () => pinned,
-        dividerText: "以上在输入框 · 以下在「更多」",
-        onChange: list => { cfg.barOrder = list.slice(); save(); },
+        dividerText: "以上固定在左侧 · 以下在「更多」",
+        onChange: list => {
+            cfg.barOrder = list.slice();
+            if (lay.right) cfg.barOrder.splice(lay.order.indexOf(lay.right), 0, lay.right);
+            save();
+        },
     });
     const syncNum = () => {
         num.textContent = String(pinned);
@@ -431,20 +498,20 @@ export function buildLayoutControls(host) {
     plus.addEventListener("click", () => { if (pinned < Math.min(6, barItems.length)) { pinned++; cfg.barPinned = pinned; save(); syncNum(); drawBar(); } });
     syncNum();
     const resetBar = el("div", "liuli-field__hint liuli-lo-reset", "恢复默认");
-    resetBar.addEventListener("click", () => { cfg.barOrder = []; cfg.barPinned = 1; save(); rebuild(); });
-    host.appendChild(resetBar);
+    resetBar.addEventListener("click", () => { cfg.barOrder = []; cfg.barPinned = 1; cfg.barRight = ""; save(); rebuild(); });
+    inputGroup.appendChild(resetBar);
 
     /* 左侧边栏 */
-    host.appendChild(el("div", "liuli-panel__group", "左侧边栏"));
+    const navGroup = addSettingsGroup(host, "左侧边栏", "导航栏与按钮显隐", expanded.has("左侧边栏"));
     /* 需求 B：导航栏「自动隐藏 / 固定」。固定时导航栏回到正常排版，
      * 占自己的一列，会话列表和右边内容跟着右移（见 layout-custom.css）。 */
-    seg(host, "导航栏", [["0", "自动隐藏"], ["1", "固定"]], cfg.navPin ? "1" : "0", v => {
+    seg(navGroup, "导航栏", [["0", "自动隐藏"], ["1", "固定"]], cfg.navPin ? "1" : "0", v => {
         cfg.navPin = v === "1";
         save();
     });
-    host.appendChild(el("div", "liuli-field__hint", "固定后导航栏一直显示，不再盖在会话列表上。自动隐藏：鼠标移到窗口左边缘时滑出，移开收起。"));
-    host.appendChild(el("div", "liuli-field__hint", "点眼睛图标隐藏或显示侧边栏上的按钮。"));
-    sortList(host, seen.nav.slice(), {
+    navGroup.appendChild(el("div", "liuli-field__hint", "固定后导航栏一直显示，不再盖在会话列表上。自动隐藏：鼠标移到窗口左边缘时滑出，移开收起。"));
+    navGroup.appendChild(el("div", "liuli-field__hint", "点眼睛图标隐藏或显示侧边栏上的按钮。"));
+    sortList(navGroup, seen.nav.slice(), {
         sortable: false,
         empty: "主界面打开后，侧边栏按钮就会出现在这里。",
         nameOf: navName,
@@ -458,8 +525,10 @@ export function buildLayoutControls(host) {
     });
 
     function rebuild() {
-        host.innerHTML = "";
-        buildLayoutControls(host);
+        const openGroups = new Set(Array.from(host.querySelectorAll(":scope > details[open] .liuli-settings-group__title"),
+            title => title.textContent));
+        host.replaceChildren();
+        buildLayoutControls(host, openGroups);
     }
 }
 

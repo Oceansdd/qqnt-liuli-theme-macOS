@@ -8,6 +8,9 @@
 /* ── 1. 会话：选中底色挪到 ::before，切换时从旧位置滑过来 ──
  * 选中项 z-index 0、其余 z-index 1：滑动途中底色压在别的行下面，
  * 不会盖住路过那几行的文字。 */
+body .recent-contact {
+  --ll-contact-selection-inset: 2px;
+}
 body .recent-contact .recent-contact-item {
   position: relative !important;
   z-index: 1;
@@ -15,24 +18,29 @@ body .recent-contact .recent-contact-item {
 body .recent-contact .recent-contact-item.recent-contact-item--selected {
   z-index: 0;
 }
-body .recent-contact .recent-contact-item.recent-contact-item--selected:not(#ll),
-body .recent-contact .recent-contact-item.recent-contact-item--selected:not(#ll):hover {
+body .recent-contact .recent-contact-item:not(#ll),
+body .recent-contact .recent-contact-item:not(#ll):is(:hover, .recent-contact-item--selected),
+body .recent-contact .recent-contact-item:not(#ll) .item__content {
   background: transparent !important;
-  background-image: none !important;
   box-shadow: none !important;
+}
+body .recent-contact .recent-contact-item:not(#ll)::after,
+body .recent-contact .recent-contact-item--selected:not(#ll) .item__content::before,
+body .recent-contact .recent-contact-item:not(#ll) .item__content::after {
+  content: none !important;
 }
 body .recent-contact .recent-contact-item.recent-contact-item--selected:not(#ll)::before {
   content: "" !important;
   display: block !important;
   position: absolute !important;
-  inset: 0 !important;
+  inset: var(--ll-contact-selection-inset) !important;
   z-index: -1 !important;
-  border-radius: 12px !important;
-  background:
-    linear-gradient(var(--ll-on-primary-container), var(--ll-on-primary-container)) no-repeat 0 50% / 3px 18px,
-    var(--ll-primary-container) !important;
-  box-shadow: var(--ll-card-shadow) !important;
+  border-radius: 8px !important;
+  opacity: var(--ll-selection-alpha, 1);
   pointer-events: none !important;
+}
+body .recent-contact .recent-contact-item:not(.recent-contact-item--selected):not(#ll):hover::before {
+  content: none !important;
 }
 
 /* 悬停：头像轻轻放大 */
@@ -96,14 +104,14 @@ body .recent-contact-item:has(.q-badge__grey):not(.recent-contact-item--selected
  * 群成员栏和气泡里的名字标签用同一套。 */
 body .group-user .q-tag.q-tag--orange:not(#ll),
 body .message-container .user-name .q-tag.q-tag--orange:not(#ll) {
-  background: var(--ll-tertiary-container) !important;
-  color: var(--ll-on-tertiary-container) !important;
+  background: var(--ll-group-owner-bg, var(--ll-tertiary-container)) !important;
+  color: var(--ll-group-owner-fg, var(--ll-on-tertiary-container)) !important;
   border: none !important;
 }
 body .group-user .q-tag.q-tag--blue:not(#ll),
 body .message-container .user-name .q-tag.q-tag--blue:not(#ll) {
-  background: var(--ll-secondary-container) !important;
-  color: var(--ll-on-secondary-container) !important;
+  background: var(--ll-group-admin-bg, var(--ll-secondary-container)) !important;
+  color: var(--ll-group-admin-fg, var(--ll-on-secondary-container)) !important;
   border: none !important;
 }
 body .group-user .q-tag.q-tag--orange:not(#ll) *,
@@ -117,16 +125,24 @@ body .message-container .user-name .q-tag.q-tag--blue:not(#ll) * {
  * 10px 的中文笔画挤在一起，在半透明玻璃上又只能用灰度抗锯齿，看起来发虚。
  * 改成 11px + 中粗，行高取整数像素。 */
 body .group-user .q-tag:not(#ll),
-body .group-user .q-tag:not(#ll) *,
-body .message-container .user-name .q-tag:not(#ll),
-body .message-container .user-name .q-tag:not(#ll) * {
+body .group-user .q-tag:not(#ll) * {
   font-size: 11px !important;
   font-weight: 600 !important;
   line-height: 16px !important;
 }
-body .group-user .q-tag:not(#ll),
-body .message-container .user-name .q-tag:not(#ll) {
+body .group-user .q-tag:not(#ll) {
   height: 16px !important;
+  padding: 0 5px !important;
+}
+
+body .message-container .user-name .q-tag:not(#ll),
+body .message-container .user-name .q-tag:not(#ll) * {
+  font-size: var(--ll-chat-tag-size, 11px) !important;
+  font-weight: 600 !important;
+  line-height: calc(var(--ll-chat-tag-size, 11px) + 5px) !important;
+}
+body .message-container .user-name .q-tag:not(#ll) {
+  height: calc(var(--ll-chat-tag-size, 11px) + 5px) !important;
   padding: 0 5px !important;
 }
 
@@ -202,62 +218,59 @@ body .group-member .group-user[data-liuli-active="hot"] .group-user__avatar {
   body .recent-contact .recent-contact-item .item__avatar { transition: none; }
 }
 
-/* ════════════════════════════════════════════════════════════
- * 会话选中：主色实底（2026-11-01，用户选定方案 B 后细化）
- * ------------------------------------------------------------
- * M3 的 primary + onPrimary 配对，暗色是浅主色深字，亮色是深主色浅字。
- *   底：主色 + 顶部 10% 高光渐变 + 1px 内描边，带一层主色投影，像浮起的一张卡
- *   字：名字 onPrimary、加粗；摘要 / 时间是 onPrimary 和主色 84% / 76% 的混色，层级靠深浅
- *   徽标反色（onPrimary 底、主色字）；免打扰图标、头像描边都跟 onPrimary 走
- * 覆盖上面 18-36 行和 layout.css 的选中样式（primaryContainer + 竖条）。
- * ════════════════════════════════════════════════════════════ */
-body .recent-contact .recent-contact-item.recent-contact-item--selected:not(#ll):not(#ll),
-body .recent-contact .recent-contact-item.recent-contact-item--selected:not(#ll):not(#ll):hover {
-  --ll-on-glass: var(--ll-on-brand);
-  --ll-on-glass-2: color-mix(in srgb, var(--ll-on-brand) 84%, var(--ll-brand));
-  --ll-on-glass-3: color-mix(in srgb, var(--ll-on-brand) 76%, var(--ll-brand));
-  --text_primary: var(--ll-on-brand);
-  --text_secondary: color-mix(in srgb, var(--ll-on-brand) 84%, var(--ll-brand));
-  --text_tertiary: color-mix(in srgb, var(--ll-on-brand) 76%, var(--ll-brand));
-  --icon_primary: var(--ll-on-brand);
-  --icon_secondary: color-mix(in srgb, var(--ll-on-brand) 76%, var(--ll-brand));
-  color: var(--ll-on-brand) !important;
+/* 会话选中使用配色预览中的 M3 底色与前景色。 */
+body {
+  --ll-contact-selected-bg: var(--ll-selection-role-bg, var(--ll-primary-container));
+  --ll-contact-selected-ink: var(--ll-selection-role-ink, var(--ll-on-primary-container));
+}
+body[data-liuli-soft-selection] {
+  --ll-contact-selected-ink: var(--ll-selection-ink);
+  --ll-contact-selected-text-shadow: 0 0 2px color-mix(in srgb, var(--ll-selection-halo) calc(100% * (1 - var(--ll-selection-alpha))), transparent);
+}
+body .recent-contact .recent-contact-item.recent-contact-item--selected:not(#ll):not(#ll) {
+  --ll-on-glass: var(--ll-contact-selected-ink);
+  --ll-on-glass-2: color-mix(in srgb, var(--ll-contact-selected-ink) 84%, var(--ll-contact-selected-bg));
+  --ll-on-glass-3: color-mix(in srgb, var(--ll-contact-selected-ink) 76%, var(--ll-contact-selected-bg));
+  --text_primary: var(--ll-on-glass);
+  --text_secondary: var(--ll-on-glass-2);
+  --text_tertiary: var(--ll-on-glass-3);
+  --icon_primary: var(--ll-on-glass);
+  --icon_secondary: var(--ll-on-glass-3);
+  color: var(--ll-on-glass) !important;
 }
 body .recent-contact .recent-contact-item.recent-contact-item--selected:not(#ll):not(#ll)::before {
-  inset: 2px 0 !important;
-  border-radius: 12px !important;
   background:
-    linear-gradient(180deg, rgba(var(--ll-specular), 0.10), rgba(var(--ll-specular), 0) 55%),
-    var(--ll-brand) !important;
-  box-shadow:
+    var(--ll-contact-selected-sheen, linear-gradient(180deg, rgba(var(--ll-specular), 0.10), transparent 55%)),
+    var(--ll-contact-selected-bg) !important;
+  box-shadow: var(--ll-contact-selected-shadow,
     inset 0 0 0 1px rgba(var(--ll-specular), 0.10),
-    0 6px 16px -6px rgba(var(--ll-brand-rgb), 0.6) !important;
+    0 6px 16px -6px color-mix(in srgb, var(--ll-contact-selected-bg) 60%, transparent)) !important;
   transition: background-color 160ms ease, box-shadow 160ms ease !important;
 }
 body .recent-contact .recent-contact-item.recent-contact-item--selected:not(#ll):not(#ll):hover::before {
   background:
-    linear-gradient(180deg, rgba(var(--ll-specular), 0.14), rgba(var(--ll-specular), 0) 55%),
-    var(--ll-brand) !important;
+    var(--ll-contact-selected-sheen, linear-gradient(180deg, rgba(var(--ll-specular), 0.14), transparent 55%)),
+    var(--ll-contact-selected-bg) !important;
 }
 body .recent-contact .recent-contact-item--selected:not(#ll) .contact-name__text,
 body .recent-contact .recent-contact-item--selected:not(#ll) .contact-name__text * {
-  color: var(--ll-on-brand) !important;
+  color: var(--ll-on-glass) !important;
   font-weight: 600 !important;
 }
 body .recent-contact .recent-contact-item--selected:not(#ll) .item__summary,
 body .recent-contact .recent-contact-item--selected:not(#ll) .item__summary * {
-  color: color-mix(in srgb, var(--ll-on-brand) 84%, var(--ll-brand)) !important;
+  color: var(--ll-on-glass-2) !important;
   opacity: 1 !important;
 }
 body .recent-contact .recent-contact-item--selected:not(#ll) .secondary-info,
 body .recent-contact .recent-contact-item--selected:not(#ll) .secondary-info * {
-  color: color-mix(in srgb, var(--ll-on-brand) 76%, var(--ll-brand)) !important;
+  color: var(--ll-on-glass-3) !important;
 }
 /* 徽标反色 */
 body .recent-contact .recent-contact-item--selected:not(#ll) .q-badge-num:not(#ll),
 body .recent-contact .recent-contact-item--selected:not(#ll) .q-badge-num:not(#ll) * {
-  background: var(--ll-on-brand) !important;
-  color: var(--ll-brand) !important;
+  background: var(--ll-on-glass) !important;
+  color: var(--ll-contact-selected-bg) !important;
   box-shadow: none !important;
 }
 body .recent-contact .recent-contact-item--selected:not(#ll) .q-badge-num:not(#ll) * {
@@ -266,24 +279,75 @@ body .recent-contact .recent-contact-item--selected:not(#ll) .q-badge-num:not(#l
 /* 免打扰图标 */
 body .recent-contact .recent-contact-item--selected:not(#ll) .no-disturb-icon,
 body .recent-contact .recent-contact-item--selected:not(#ll) .no-disturb-icon * {
-  color: color-mix(in srgb, var(--ll-on-brand) 76%, var(--ll-brand)) !important;
+  color: var(--ll-on-glass-3) !important;
   fill: currentColor !important;
 }
-/* 头像外圈一道 onPrimary 细描边，和实底分开 */
+/* 用选中前景色描出头像边缘。 */
 body .recent-contact .recent-contact-item--selected:not(#ll) .item__avatar .avatar {
-  box-shadow: 0 0 0 2px rgba(var(--ll-on-brand-rgb, 255, 255, 255), 0.55) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ll-on-glass) 55%, transparent) !important;
 }
 
 /* ── 会话列表的滚动条不再压在内容上（2026-11-01）──
  * QQ 的列表滚动区是 overflow: overlay，滚动条盖在会话项右侧（时间、未读数上）。
  * 给滚动区右侧留出滚动条的宽度（liuli.css 里是 8px），内容和滚动条各占各的。 */
 body .recent-contact .q-scroll-view:not(#ll) {
-  padding-right: 8px !important;
+  --ll-contact-scrollbar-space: 8px;
+  padding-right: var(--ll-contact-scrollbar-space) !important;
   box-sizing: border-box !important;
+}
+
+/* 描边画在卡片内侧，不参与会话列的尺寸计算。 */
+body[data-liuli-scope="main"] .two-col-layout__aside > .recent-contact:not(#ll) {
+  --ll-main-contact-edge: inset 0 0 0 1px rgba(var(--ll-on-glass-rgb), 0.10);
+  box-shadow: var(--ll-main-contact-edge), var(--ll-card-shadow) !important;
+}
+body[data-liuli-scope="main"][data-liuli-liquid-glass] .two-col-layout__aside > .recent-contact:not(#ll) {
+  --ll-liquid-card-shadow: var(--ll-main-contact-edge), 0 4px 14px var(--ll-liquid-depth);
+}
+body[data-liuli-scope="main"][data-liuli-liquid-glass]:not([data-liuli-window-focused]) .two-col-layout__aside > .recent-contact:not(#ll) {
+  --ll-liquid-card-shadow: var(--ll-main-contact-edge), 0 2px 8px var(--ll-liquid-depth);
+}
+
+/* 两侧沿用会话行的 6px 外边距，视口保持圆角裁切。 */
+body[data-liuli-scope="main"] .recent-contact > :is(.list-toggler, .recent-contact-list--wrapper) {
+  border-radius: inherit;
+}
+body[data-liuli-scope="main"] .recent-contact > :is(.list-toggler, .recent-contact-list--wrapper) > .q-scroll-view:not(#ll) {
+  padding-inline: 0 !important;
+  scrollbar-gutter: stable both-edges;
+}
+/* 保留 8px 滑块命中区，内侧透明边让底板不被滑块盖住。 */
+body[data-liuli-scope="main"] .recent-contact > :is(.list-toggler, .recent-contact-list--wrapper) > .q-scroll-view:not(#ll)::-webkit-scrollbar-thumb {
+  border-left: 2px solid transparent;
 }
 
 /* 会话项本身也越界了：QQ 给它 width:100%，琉璃又加了左右 6px 外边距，右边多出 12px 伸进滚动条那一列。
  * 宽度减掉两侧外边距。 */
 body .recent-contact .recent-contact-item:not(#ll) {
   width: calc(100% - 12px) !important;
+}
+
+/* 普通群头衔包含等级和称号两个文字节点。 */
+body[data-liuli-custom-title-color] :is(.group-user, .message-container .user-name) :is(.q-tag, .group-member-label):not(.q-tag--orange, .q-tag--blue, #ll) {
+  background-color: var(--ll-group-title-bg) !important;
+}
+body[data-liuli-custom-title-text] :is(.group-user, .message-container .user-name) :is(.q-tag, .group-member-label):not(.q-tag--orange, .q-tag--blue, #ll),
+body[data-liuli-custom-title-text] :is(.group-user, .message-container .user-name) :is(.q-tag, .group-member-label):not(.q-tag--orange, .q-tag--blue, #ll) * {
+  color: var(--ll-group-title-fg) !important;
+}
+
+/* QQ 把发送者文字放在昵称行的 .text-ellipsis 中，与身份标签并排。 */
+body[data-liuli-custom-sender-color] .message-container .user-name > .text-ellipsis:not(#ll):not(.q-tag, .group-member-label),
+body[data-liuli-custom-sender-color] .message-container .user-name > .text-ellipsis:not(#ll):not(.q-tag, .group-member-label) :not(.q-tag, .q-tag *, .group-member-label, .group-member-label *) {
+  color: var(--ll-sender-color) !important;
+}
+
+/* 浓度降低后，摘要与时间也使用配对前景色，避免浅底或深底上失去对比。 */
+body[data-liuli-soft-selection] .recent-contact .recent-contact-item--selected:not(#ll):not(#ll) {
+  --ll-on-glass-2: var(--ll-contact-selected-ink);
+  --ll-on-glass-3: var(--ll-contact-selected-ink);
+  text-shadow: var(--ll-contact-selected-text-shadow);
+}
+body[data-liuli-soft-selection] .recent-contact .recent-contact-item--selected .q-badge-num {
+  text-shadow: none;
 }

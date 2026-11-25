@@ -176,9 +176,9 @@
 .message .text-element,
 .message .text-normal,
 .msg-content-container .text-element {
-  font-size: 14px !important;
+  font-size: var(--ll-chat-body-size, 14px) !important;
   font-weight: 400 !important;
-  line-height: 22px !important;
+  line-height: calc(var(--ll-chat-body-size, 14px) + 8px) !important;
   letter-spacing: 0.15px !important;
 }
 }
@@ -186,9 +186,9 @@
 /* 消息里的发送者名：小一号 + 中等字重 */
 .msg-content-container .user-name,
 .message-container .user-name {
-  font-size: 12px !important;
+  font-size: var(--ll-chat-name-size, 12px) !important;
   font-weight: 500 !important;
-  line-height: 16px !important;
+  line-height: max(calc(var(--ll-chat-name-size, 12px) + 4px), calc(var(--ll-chat-tag-size, 11px) + 5px)) !important;
   letter-spacing: 0.2px !important;
   color: var(--ll-on-glass-2) !important;
 }

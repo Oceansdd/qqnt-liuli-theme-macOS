@@ -1,12 +1,12 @@
-> [!IMPORTANT]
-> 这是 [Oceansdd/qqnt-liuli-theme-macOS](https://github.com/Oceansdd/qqnt-liuli-theme-macOS) 的 **macOS / LiteLoaderQQNT 适配版** README，对应 **`liteloader` 分支**。
-> 本项目 Fork 自 [LilycleHeart/qqnt-liuli-theme](https://github.com/LilycleHeart/qqnt-liuli-theme)，原作者为 LilycleHeart。原项目的 SnowLora 版本可参见 [main 分支](https://github.com/Oceansdd/qqnt-liuli-theme-macOS/tree/main)。
-
 <div align="center">
 
-# 🌊 琉璃 Liuli · macOS
+<img src="assets/brand/liuli-icon.png" alt="Liuli for macOS 琉璃晶体图标" width="128" height="128" />
 
-**QQNT 主题 · macOS 兼容改造与配置持久化修复**
+# 琉璃 for macOS · Liuli
+
+**以光为色，以璃为形。**
+
+让 QQ 的每一寸界面，都拥有属于 macOS 的通透与细腻。
 
 [![macOS](https://img.shields.io/badge/macOS-27-888?style=flat-square)](#支持的环境)
 [![QQNT](https://img.shields.io/badge/QQNT-6.9.97--50776-1d9bf0?style=flat-square)](#支持的环境)
@@ -14,7 +14,19 @@
 
 </div>
 
-从壁纸取色，通过 Material Color Utilities 派生 Material 3 动态配色，为 QQNT 提供亚克力玻璃风格界面。**无需 BetterQQNT。**
+琉璃 for macOS 是基于开源项目「琉璃」衍生开发的 macOS QQNT 个性化主题，致力于将现代玻璃材质、动态色彩系统与 macOS 的设计语言融入日常聊天体验。
+
+项目提供经典琉璃与 Liquid Glass 双材质、MCU 壁纸动态取色、TG／TIM／原版聊天气泡、响应式输入栏、自定义界面布局及持久化外观配置，在保留 QQ 原生功能的基础上，重新探索桌面即时通讯软件的视觉与交互体验。
+
+本项目由 **OpenAI ChatGPT 全程鼎力支持**，深度参与技术架构、代码开发、故障诊断、工程测试、视觉设计与版本规划，并由项目维护者负责产品决策、实机验收及发布管理。
+
+这是一次人类审美与人工智能工程能力相结合的开源实践。
+
+感谢原版琉璃及其开发者为本项目奠定的开源基础。
+
+> [!IMPORTANT]
+> 本页对应 macOS Fork 的 `liteloader` 分支，使用 LiteLoaderQQNT。SnowLora 版本见 [main 分支](https://github.com/Oceansdd/qqnt-liuli-theme-macOS/tree/main)。
+> 正式版和安装包见 [GitHub Releases](https://github.com/Oceansdd/qqnt-liuli-theme-macOS/releases)。此分支采用手动更新。
 
 > [!NOTE]
 > 默认使用经典琉璃的 **CSS 亚克力材质**。**Liquid Glass 风格** 使用 CSS 绘制，可在外观设置中切换。
@@ -35,13 +47,14 @@
 |---|---|---|
 | 💾 | **macOS 配置持久化** | 布局、菜单、壁纸、裁剪/适配参数、配色、字体、Markdown 开关及明暗模式在重新启动 QQ 后恢复 |
 | 🪟 | **独立聊天窗口清晰壁纸** | 取消独立聊天窗口额外的 24px 背景模糊，并降低辅助遮罩透明度，不影响消息气泡 |
-| 🎨 | **动态色板** | 根据壁纸实时派生 Material 3 色板；自定义强调色、选中项及双方气泡角色 |
+| 🎨 | **动态色板** | 由壁纸或自定义 HEX 派生 Material 3 色板，提供八项预览。强调色、选中项与双方气泡分别选色，选中底色可调不透明度 |
 | 🧊 | **亚克力玻璃** | 会话列表、详情栏、弹层与菜单使用半透明材质 |
 | 💬 | **三种聊天气泡** | TG、原版、TIM 可切换；TG 使用琉璃气泡，原版与 TIM 保留 QQ 个性装扮 |
 | 📝 | **Markdown 行内渲染** | 支持代码、粗体、斜体、删除线、剧透等行内语法（功能移植自 BetterQQNT） |
 | 🔔 | **@ 高亮** | 区分 @我、@全体成员与 @其他人 |
 | 🌐 | **卡片用浏览器打开** | 支持对部分 QQ 小程序卡片提取网页链接并交给默认浏览器 |
-| 🖌️ | **名称配色** | 使用 MCU 派生的第三色 |
+| 🖌️ | **聊天外观** | 可独立调整正文、昵称与身份标签字号，自定义昵称和群身份配色，以及 TG 气泡尺寸 |
+| 📌 | **会话列表** | 置顶分组记忆折叠状态，独立窗支持头像窄栏与右侧搜索浮层 |
 | 🌀 | **消息入场动画** | 会话消息级联入场，遵守系统减少动画设置 |
 | 🔤 | **自定义字体** | 可以选择本机安装的字体 |
 | 🧩 | **布局自定义** | 消息右键菜单、输入框工具、侧边栏与标题栏等选项 |
@@ -72,9 +85,9 @@
    ~/Library/Containers/com.tencent.qq/Data/Documents/LiteLoaderQQNT/plugins/
    ```
 
-4. 下载本 Fork 的 [`liteloader` 分支](https://github.com/Oceansdd/qqnt-liuli-theme-macOS/tree/liteloader)，将代码放入该目录下的 `liuli-dsh-theme` 文件夹。必须确保 `manifest.json` **直接位于** `liuli-dsh-theme/manifest.json`，不能再套一层 ZIP 根目录。
+4. 从 [GitHub Releases](https://github.com/Oceansdd/qqnt-liuli-theme-macOS/releases) 下载对应版本的插件 ZIP，将内容解压到该目录下的 `liuli-dsh-theme` 文件夹。确认 `manifest.json` **直接位于** `liuli-dsh-theme/manifest.json`。
 5. 如果曾安装旧版琉璃，先将旧插件目录**移出 `plugins` 文件夹备份**，再安装当前版本，避免两个副本同时加载。
-6. 启动 QQ，在设置 → **琉璃** 中选择壁纸、配色和布局；然后完整退出并重新启动 QQ，验证配置正常恢复。
+6. 启动 QQ，在设置 → **琉璃 for macOS** 中选择壁纸、配色和布局。较早安装包的入口显示为「琉璃」。然后完整退出并重新启动 QQ，验证配置正常恢复。
 
 如果该目录里还没有 `liuli-dsh-theme`，也可用 Git 安装：
 
@@ -101,6 +114,8 @@ git clone --branch liteloader --single-branch \
 ```
 
 备份或迁移时，建议同时保留 `plugins/liuli-dsh-theme/` 和 `data/liuli-dsh-theme/`。**不要把个人配置、壁纸图片或诊断包提交到公共 GitHub 仓库。**
+
+若选中项配色设为「强调色」，回退到只支持主色、次色和第三色的旧版前，请先在当前版本切回其中一项，并备份外观与布局。旧版遇到「强调色」值时可能无法读取 `appearance.json`，部分早期安装版再次保存时会覆盖原外观配置。
 
 ## 🗂️ 源码结构
 
@@ -167,6 +182,17 @@ assets/                     其他样式、MCU、图标与预览素材
 - 探索 macOS **原生 Liquid Glass** 的可行性；**目前尚未实现**。
 
 ---
+
+## 署名与致谢
+
+- 上游项目由 [LilycleHeart](https://github.com/LilycleHeart) 开发。详见[原版琉璃](https://github.com/LilycleHeart/qqnt-liuli-theme)及其[贡献者说明](https://github.com/LilycleHeart/qqnt-liuli-theme/blob/main/CONTRIBUTORS.md)。
+- [macOS Fork](https://github.com/Oceansdd/qqnt-liuli-theme-macOS) 由 [Oceansdd](https://github.com/Oceansdd) 维护。OpenAI ChatGPT 提供 AI 辅助开发与设计支持，产品与发行由项目维护者负责。
+
+## 许可
+
+本项目代码采用 [MIT 许可证](LICENSE)，保留原版琉璃及 macOS Fork 的版权声明。随包附带的第三方代码适用各自的许可，参见[第三方许可与来源说明](THIRD_PARTY_NOTICES.md)。
+
+行内 Markdown 沿用上游继承的 BetterQQNT 实现及归属，原始项目、版本和具体许可证尚未核实。
 
 <div align="center">
 <sub>原项目：<a href="https://github.com/LilycleHeart/qqnt-liuli-theme">LilycleHeart/qqnt-liuli-theme</a> · macOS Fork：<a href="https://github.com/Oceansdd/qqnt-liuli-theme-macOS">Oceansdd/qqnt-liuli-theme-macOS</a> · 基于 <a href="https://github.com/LiteLoaderQQNT/LiteLoaderQQNT">LiteLoaderQQNT</a></sub>

@@ -1,17 +1,26 @@
 {
   "manifest_version": 4,
   "type": "extension",
-  "name": "琉璃",
+  "name": "琉璃 for macOS",
   "slug": "liuli-dsh-theme",
-  "description": "琉璃视觉（移植自 dsh-liuli-ui-enhance）：MCU 壁纸取色动态色板、磨砂玻璃材质、Markdown 渲染、@ 高亮、消息级联入场、自定义字体、右键菜单/输入框/侧边栏布局自定义。",
-  "version": "1.3.6",
-  "thumb": "./assets/icon.svg",
-  "author": {
-    "name": "LilycleHeart",
-    "link": "https://github.com/LilycleHeart"
+  "description": "专为 macOS QQNT 打造的琉璃主题，融合经典琉璃、Liquid Glass、MCU 动态取色、自定义聊天气泡与响应式布局。本项目基于原版琉璃开发，由 OpenAI ChatGPT 全程鼎力支持。",
+  "version": "1.3.7",
+  "icon": "./assets/brand/liuli-icon.png",
+  "thumb": "./assets/brand/liuli-sidebar.svg",
+  "authors": [
+    {
+      "name": "LilycleHeart",
+      "link": "https://github.com/LilycleHeart"
+    },
+    {
+      "name": "Oceansdd",
+      "link": "https://github.com/Oceansdd"
+    }
+  ],
+  "repository": {
+    "repo": "Oceansdd/qqnt-liuli-theme-macOS",
+    "branch": "liteloader"
   },
-  "homepage": "https://github.com/LilycleHeart/qqnt-liuli-theme",
-  "repo": "LilycleHeart/qqnt-liuli-theme",
   "dependencies": [],
   "platform": ["win32", "linux", "darwin"],
   "injects": {

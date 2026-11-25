@@ -63,6 +63,17 @@ body[data-hash="#/chat"] .recent-contact :is(.recent-contact-list, .viewport-lis
   border: none !important;
 }
 
+/* 搜索面板随会话列缩放，覆盖 QQ 展开时写入的固定宽度。 */
+body .recent-contact .contact-top-bar {
+  container-type: inline-size;
+}
+body .recent-contact .contact-top-bar .main-search .search-result:not(#ll) {
+  box-sizing: border-box !important;
+  width: 100cqw !important;
+  min-width: 0 !important;
+  max-width: 100cqw !important;
+}
+
 /* ── header：按用户要求不加材质（2026-10-28），只保留与正文卡的间距 ── */
 .aio > .chat-header {
   margin: 0 0 var(--ll-dock-gap) var(--ll-dock-gap) !important;
@@ -100,25 +111,23 @@ body[data-liuli-dark="0"] .aio > .chat-header {
 /* ── 浮动输入卡：不再是贴底的整条，而是正文卡里四周留白的卡片。
  * ⚠️ 仍然不加 backdrop-filter（会让 ProseMirror 不绘制），
  * 下面是正文卡的磨砂，这里只给更实的底色。 ── */
-.aio .chat-input-area {
+body:where(:not([data-liuli-input-layout="native"])) .aio .chat-input-area {
   /* 上边 10px：聊天记录最后一条不贴输入框（2026-10-30） */
   margin: 10px 10px 10px !important;
   width: auto !important;
   align-self: stretch !important;
   padding: 0 !important;
-  border: var(--ll-card-border) !important;
-  border-radius: var(--ll-radius) !important;
-  background: var(--ll-noise), rgba(var(--ll-acrylic), calc(var(--ll-material-opacity) + 0.36)) !important;
-  box-shadow: var(--ll-shadow) !important;
+  border: none !important;
 }
 
 /* 输入卡本身就是框，里面不再套第二层框 */
-.aio .chat-input-area > .msg-input {
+body:where(:not([data-liuli-input-layout="native"])) .aio .chat-input-area > .msg-input {
   background: transparent !important;
   border: none !important;
   border-radius: var(--ll-radius) !important;
   box-shadow: none !important;
   min-height: 44px !important;
+  padding-left: calc(var(--ll-composer-left-inset) + 12px) !important;
 }
 
 /* ── 侧栏导航选中：primaryContainer 实底 ── */
@@ -167,22 +176,20 @@ body[data-liuli-dark="0"] .aio > .chat-header {
 
 /* 发送键：输入卡去掉内边距后，原来的 bottom:16px 会把它顶到卡片上沿外，
  * 改为在 44px 单行高度里垂直居中（(44 - 30) / 2 = 7），多行时仍贴底行。 */
-.aio .chat-input-area > .operation {
-  right: 8px !important;
+body:where(:not([data-liuli-input-layout="native"])) .aio .chat-input-area > .operation {
+  right: calc(8px + var(--ll-composer-right-inset, 0px)) !important;
   bottom: 7px !important;
 }
 
 /* 发送图标错位：QQ 给 .send-btn-wrap 写了 padding-right:11px，
  * .send 被挤到左边 5px，纸飞机就偏了。三层全部归零、居中。 */
-.chat-input-area > .operation .send-btn-wrap,
-.chat-input-area > .operation .send,
-.chat-input-area > .operation .send-msg {
+:where(body:not([data-liuli-input-layout="native"])) .chat-input-area > .operation :is(.send-btn-wrap, .send, .send-msg) {
   padding: 0 !important;
   margin: 0 !important;
   box-sizing: border-box !important;
 }
 /* 纸飞机图形的视觉重心偏左下，向右上补 1px */
-.chat-input-area > .operation .send-msg::after {
+body:where(:not([data-liuli-input-layout="native"])) .chat-input-area > .operation .send-msg::after {
   transform: translate(-1px, 1px) !important;
 }
 
@@ -631,7 +638,7 @@ body {
 }
 
 /* 1. 输入区 / 工具栏面板 / 展开的侧栏：同一底色 */
-body .aio .chat-input-area,
+body:where(:not([data-liuli-input-layout="native"])) .aio .chat-input-area,
 body .chat-input-area > .chat-func-bar.liuli-expanded {
   background: var(--ll-noise), var(--ll-float-bg) !important;
 }
@@ -1014,17 +1021,22 @@ body .chat-input-area > .chat-func-bar.liuli-expanded {
 }
 /* 输入区自身不能挂 backdrop-filter（会让 ProseMirror 不绘制），
  * 用 DSH composer-card 的做法：磨砂放在 ::before 上，内容在其上方。 */
-body .aio .chat-input-area {
+body:where(:not([data-liuli-input-layout="native"])):has(#liuli-bar-pins .liuli-bar-btn--right) {
+  --ll-composer-right-inset: 40px;
+}
+body:where(:not([data-liuli-input-layout="native"])) .aio .chat-input-area {
+  --ll-composer-left-inset: calc(var(--liuli-bar-pad, 44px) - 4px);
   background: transparent !important;
   isolation: isolate !important;
-  box-shadow: var(--ll-card-shadow) !important;
+  box-shadow: none !important;
 }
-body .aio .chat-input-area::before {
+body:where(:not([data-liuli-input-layout="native"])) .aio .chat-input-area::before {
   content: "" !important;
   position: absolute !important;
-  inset: 0 !important;
+  inset: 0 var(--ll-composer-right-inset, 0px) 0 var(--ll-composer-left-inset) !important;
   z-index: -1 !important;
-  border-radius: inherit !important;
+  border-radius: 22px !important;
+  box-shadow: var(--ll-card-shadow) !important;
   background: var(--ll-card-bg) !important;
   backdrop-filter: var(--ll-card-blur-strong) !important;
   -webkit-backdrop-filter: var(--ll-card-blur-strong) !important;
@@ -1066,7 +1078,7 @@ body .sys-status-editor .entrance-btn {
 
 /* ── 输入卡底边与左侧会话列表卡、右侧群成员卡对齐（2026-10-29）──
  * 原来 margin-bottom:10px，输入卡底边在 863，两侧卡片底边在 873。 */
-body .aio .chat-input-area:not(#ll) {
+body:where(:not([data-liuli-input-layout="native"])) .aio .chat-input-area:not(#ll) {
   margin-bottom: 0 !important;
 }
 
@@ -1659,4 +1671,140 @@ body .chat-func-bar.liuli-expanded:not(#ll):not(#ll):not(#ll):not(#ll) .bar-icon
 body .chat-func-bar.liuli-expanded .bar-more-menu .bar-more-menu-inner.q-context-menu:not(#ll) {
   margin-top: -10px !important;
   margin-left: -29px !important;  /* 小三角中心在格子左边 + 29px */
+}
+
+body[data-liuli-scope="main"][data-liuli-hide-empty-logo] .empty-aio :is(.q-empty-page-img, .qq-logo) {
+  display: none !important;
+}
+
+/* 独立聊天的头像栏按列宽切换，窗口宽度不参与判断。 */
+body[data-hash="#/chat"] .two-col-layout__aside {
+  container: ll-chat-aside / inline-size;
+}
+/* 搜索打开时，会话列须盖过 z-index: 1 的消息滚动层，才能显示伸出窄栏的结果。 */
+body[data-hash="#/chat"] .two-col-layout__aside:has(.main-search .search-result) {
+  z-index: 2;
+}
+@container ll-chat-aside (max-width: 100px) {
+  body[data-hash="#/chat"] .recent-contact .contact-top-bar {
+    box-sizing: border-box !important;
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+  }
+  body[data-hash="#/chat"] .recent-contact .contact-top-bar > .main-search:not(#ll) {
+    flex: 0 0 24px !important;
+    width: 24px !important;
+    height: 24px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 50% !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: var(--ll-on-glass) !important;
+    cursor: pointer;
+  }
+  body[data-hash="#/chat"][data-liuli-liquid-glass] .recent-contact .contact-top-bar > .main-search:not(#ll) {
+    background: var(--ll-liquid-control-bg) !important;
+    box-shadow: var(--ll-liquid-control-shadow) !important;
+  }
+  body[data-hash="#/chat"][data-liuli-liquid-glass] .recent-contact .contact-top-bar > .main-search:not(#ll):hover {
+    background: rgba(var(--ll-brand-rgb), 0.18) !important;
+  }
+  body[data-hash="#/chat"] .recent-contact .contact-top-bar > .main-search:not(#ll):focus-visible {
+    outline: 2px solid var(--ll-brand) !important;
+    outline-offset: 2px;
+  }
+  body[data-hash="#/chat"] .recent-contact .contact-top-bar > .main-search > :is(.q-icon, svg) {
+    width: 16px !important;
+    height: 16px !important;
+    margin: 0 !important;
+  }
+  body[data-hash="#/chat"] .recent-contact .contact-top-bar .contact-adder-btn {
+    flex: 0 0 24px !important;
+    width: 24px !important;
+    height: 24px !important;
+    margin: 0 !important;
+  }
+  body[data-hash="#/chat"] .recent-contact:not(#ll) {
+    overflow: visible !important;
+    --ll-contact-selection-inset: 0px;
+  }
+  body[data-hash="#/chat"] .recent-contact .q-scroll-view:not(#ll) {
+    padding-right: 0 !important;
+  }
+  body[data-hash="#/chat"] .recent-contact:not([data-liuli-pin-collapsed='1']) .recent-contact-item:not(#ll),
+  body[data-hash="#/chat"] .recent-contact[data-liuli-pin-motion] .recent-contact-item:not(#ll),
+  body[data-hash="#/chat"] .recent-contact .recent-contact-item:not([data-liuli-pin]):not(#ll) {
+    display: flex !important;
+  }
+  body[data-hash="#/chat"] .recent-contact .recent-contact-item:not(#ll) {
+    align-items: center !important;
+    justify-content: center !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+  /* 悬停层限制在会话行内。 */
+  body[data-hash="#/chat"] .recent-contact .recent-contact-item:not(#ll) {
+    clip-path: inset(0 round 12px);
+  }
+  /* 置顶首行的标题位于行上方。 */
+  body[data-hash="#/chat"] .recent-contact .recent-contact-item:is([data-liuli-pin="first"], [data-liuli-pin="single"]):not(#ll) {
+    clip-path: inset(-28px 0 0 0 round 12px);
+  }
+  body[data-hash="#/chat"] .recent-contact .recent-contact-item :is(.list-item__container, .item__content) {
+    border-radius: 12px !important;
+  }
+  body[data-hash="#/chat"] .recent-contact .recent-contact-item .item__avatar {
+    margin: 0 !important;
+    transform: none !important;
+  }
+  body[data-hash="#/chat"] .recent-contact .liuli-pin-heading:not(#ll):not(#ll) {
+    left: 0 !important;
+    right: 0 !important;
+    justify-content: center;
+    font-size: 0 !important;
+  }
+  body[data-hash="#/chat"] .recent-contact .liuli-pin-heading::before {
+    content: '';
+    width: 14px;
+    height: 14px;
+    background: currentColor;
+    mask: var(--ll-pin-icon) center / contain no-repeat;
+  }
+  body[data-hash="#/chat"] .recent-contact .liuli-pin-heading::after {
+    flex: 0 0 10px;
+    width: 10px;
+    height: 10px;
+    margin-left: 3px;
+  }
+  /* 输入框和结果共用原生面板，定位参照为会话卡。 */
+  body[data-hash="#/chat"] .recent-contact .contact-top-bar .main-search > .search-content:not(#ll) {
+    inset-inline: calc(100% + var(--ll-dock-gap)) auto !important;
+    box-sizing: border-box !important;
+    width: clamp(0px, calc(100vw - 100% - 3 * var(--ll-dock-gap)), 300px) !important;
+    background: rgb(var(--ll-acrylic)) !important;
+    box-shadow: var(--ll-float-shadow) !important;
+  }
+  body[data-hash="#/chat"] .recent-contact .main-search > .search-content > .main-search__search-input-panel {
+    flex-shrink: 0;
+  }
+  body[data-hash="#/chat"] .recent-contact .main-search > .search-content > .search-content-scroll {
+    min-height: 0;
+    overflow-y: auto !important;
+  }
+  body[data-hash="#/chat"] .recent-contact .contact-top-bar .main-search .search-result:not(#ll) {
+    width: 100% !important;
+    max-width: 100% !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
 }

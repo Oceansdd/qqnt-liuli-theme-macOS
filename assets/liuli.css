@@ -312,6 +312,11 @@ body[data-liuli-dark="0"] [class*="msg-time"],
 body[data-liuli-dark="0"] .message-container [class*="time"] {
   text-shadow: 0 0 2px rgba(var(--ll-halo-rgb, 255, 255, 255), 0.9), 0 0 6px rgba(var(--ll-halo-rgb, 255, 255, 255), 0.7);
 }
+/* 浅色模式的发送者名称使用轻微投影。 */
+body[data-liuli-dark="0"] .message-container .user-name,
+body[data-liuli-dark="0"] .message-container .user-name * {
+  text-shadow: 0 1px 2px rgba(var(--ll-shadow-rgb), 0.35) !important;
+}
 /* 消息时间分隔条（QQ 原生 .babble 是写死的 rgba(0,0,0,0.3)：暗色下融进黑底，亮色下是一块脏灰）。
  * 按 M3 改成 surfaceContainerHigh 底 + onSurfaceVariant 字，两种模式都是同一套角色。 */
 .message__timestamp .babble,

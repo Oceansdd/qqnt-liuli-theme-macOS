@@ -1,3 +1,4 @@
+@scope (body:not([data-liuli-input-layout="native"])) {
 /* ============================================================
  * 琉璃 · 输入区（保留改造 + 不破坏编辑器）
  * ------------------------------------------------------------
@@ -23,6 +24,8 @@
   /* QQ 用 --inputAreaHeight 把整块定死在 207px，导致输入框过高；
    * 改为随内容增高，上限沿用 QQ 原值 50vh。 */
   height: auto !important;
+  /* 原版拖动后会留下内联 flex-basis，TG 用内容高度参与布局。 */
+  flex-basis: auto !important;
   max-height: 50vh !important;
   padding: 8px 12px 10px !important;
   box-sizing: border-box !important;
@@ -77,7 +80,7 @@
   min-height: 40px !important;
   max-height: calc(50vh - 20px) !important;
   /* 左边让给 表情/+ 两个按钮，右边让给发送键 */
-  padding: 0 50px 0 var(--liuli-bar-pad, 76px) !important;
+  padding: 0 var(--liuli-bar-right-pad, 50px) 0 var(--liuli-bar-pad, 76px) !important;
   display: flex !important;
   align-items: center !important;
 }
@@ -243,3 +246,87 @@
 
 
 
+
+}
+body[data-liuli-input-layout="native"] #liuli-input-overlay {
+  display: none !important;
+}
+
+/* 多选状态由输入栏生命周期按活动输入区的实际布局同步。
+ * 多选期间覆盖普通编辑器、工具栏和两种材质的胶囊层。 */
+@layer liuli-multiselect {
+  @scope (body:not([data-liuli-input-layout="native"])) {
+    .aio .chat-input-area[data-liuli-multiselect]
+      > :is(.msg-input, .operation, .chat-func-bar),
+    :scope > #liuli-input-overlay[data-liuli-multiselect] {
+      display: none !important;
+    }
+
+    .aio .chat-input-area[data-liuli-multiselect]::before {
+      content: none !important;
+    }
+  }
+}
+
+@layer liuli-multiselect {
+  @scope (body) {
+    .aio .chat-input-area > ul.forward-ops {
+      position: relative !important;
+      isolation: isolate;
+      box-sizing: border-box !important;
+      min-width: 0;
+      padding: 8px 12px !important;
+      flex-wrap: wrap !important;
+      gap: 8px 12px !important;
+      border-radius: 20px !important;
+      background: transparent !important;
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+      box-shadow: none !important;
+    }
+
+    .aio .chat-input-area > ul.forward-ops::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      border-radius: inherit;
+      background: var(--ll-multiselect-bg, var(--ll-card-bg));
+      backdrop-filter: var(--ll-multiselect-blur, var(--ll-card-blur-strong));
+      -webkit-backdrop-filter: var(--ll-multiselect-blur, var(--ll-card-blur-strong));
+      box-shadow: var(--ll-multiselect-shadow, var(--ll-card-shadow));
+      pointer-events: none;
+    }
+
+    :scope[data-liuli-liquid-glass] .aio .chat-input-area > ul.forward-ops {
+      --ll-multiselect-bg: var(--ll-liquid-control-bg);
+      --ll-multiselect-blur: var(--ll-liquid-control-blur);
+      --ll-multiselect-shadow: var(--ll-liquid-control-shadow);
+    }
+
+    .aio .chat-input-area > ul.forward-ops > li:not(.disabled, [aria-disabled="true"]):not(:has(:disabled, [aria-disabled="true"], .q-button--disabled, .disabled)) {
+      color: var(--ll-on-glass) !important;
+      --text_primary: var(--ll-on-glass);
+      --text_secondary: var(--ll-on-glass);
+      --icon_primary: var(--ll-on-glass);
+      --icon_secondary: var(--ll-on-glass);
+    }
+
+    .aio .chat-input-area > ul.forward-ops > li:not(.disabled, [aria-disabled="true"]):not(:has(:disabled, [aria-disabled="true"], .q-button--disabled, .disabled)) > :is(.op-icon, span) {
+      color: inherit !important;
+    }
+
+    .aio .chat-input-area > ul.forward-ops .op-icon {
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+    }
+
+    @media (prefers-reduced-transparency: reduce) {
+      .aio .chat-input-area > ul.forward-ops::before {
+        background: rgb(var(--ll-acrylic));
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+      }
+    }
+  }
+}

@@ -19,7 +19,7 @@
   border-radius: 14px 4px 14px 14px !important;
   background: rgba(var(--ll-brand-rgb), 0.42) !important;
   border: none !important;
-  padding: 8px 13px 8px !important;
+  padding: calc(8px * var(--ll-tg-bubble-scale, 1)) calc(13px * var(--ll-tg-bubble-scale, 1)) !important;
   position: relative !important;
   box-shadow: 0 1px 2px rgba(var(--ll-shadow-rgb), 0.16) !important;
 }
@@ -29,7 +29,7 @@
   border-radius: 4px 14px 14px 14px !important;
   background: rgba(var(--ll-acrylic), calc(var(--ll-material-opacity) + 0.16)) !important;
   border: none !important;
-  padding: 8px 13px 8px !important;
+  padding: calc(8px * var(--ll-tg-bubble-scale, 1)) calc(13px * var(--ll-tg-bubble-scale, 1)) !important;
   position: relative !important;
   box-shadow: 0 1px 2px rgba(var(--ll-shadow-rgb), 0.16) !important;
 }
@@ -50,9 +50,9 @@
   max-width: 100% !important;
   margin: 0 0 3px 0 !important;
   padding: 0 !important;
-  font-size: 12px !important;
+  font-size: var(--ll-chat-name-size, 12px) !important;
   font-weight: 500 !important;
-  line-height: 16px !important;
+  line-height: max(calc(var(--ll-chat-name-size, 12px) + 4px), calc(var(--ll-chat-tag-size, 11px) + 5px)) !important;
   letter-spacing: 0.1px !important;
   color: var(--ll-brand) !important;
   white-space: nowrap !important;
@@ -68,11 +68,11 @@
   display: inline-flex !important;
   align-items: center !important;
   flex: 0 0 auto !important;
-  height: 15px !important;
+  height: calc(var(--ll-chat-tag-size, 10px) + 5px) !important;
   padding: 0 5px !important;
   border-radius: 4px !important;
-  font-size: 10px !important;
-  line-height: 15px !important;
+  font-size: var(--ll-chat-tag-size, 10px) !important;
+  line-height: calc(var(--ll-chat-tag-size, 10px) + 5px) !important;
   font-weight: 500 !important;
   letter-spacing: 0 !important;
   background: rgba(var(--ll-brand-rgb), 0.18) !important;
@@ -97,11 +97,11 @@
   float: right !important;
 }
 
-/* ── 4. 气泡内文字 ── */
+/* ── 4. 气泡内正文：搬入的 .user-name 也有 text-ellipsis ── */
 .msg-content-container .text-element,
 .msg-content-container .message-content,
-.msg-content-container > [class*="text"] {
-  font-size: 14px !important;
+.msg-content-container > [class*="text"]:not(.user-name) {
+  font-size: var(--ll-chat-body-size, 14px) !important;
   line-height: 1.45 !important;
 }
 
@@ -315,9 +315,9 @@
   border: none !important;
   border-radius: 4px !important;
   padding: 0 5px !important;
-  font-size: 10px !important;
-  line-height: 15px !important;
-  height: 15px !important;
+  font-size: var(--ll-chat-tag-size, 10px) !important;
+  line-height: calc(var(--ll-chat-tag-size, 10px) + 5px) !important;
+  height: calc(var(--ll-chat-tag-size, 10px) + 5px) !important;
   display: inline-flex !important;
   align-items: center !important;
 }
@@ -782,7 +782,8 @@
 :scope[data-liuli-chat-style="tim"] .message-container[data-liuli-tim-text] .msg-content-container:not(.container--personalization):not(#ll) {
   --ll-tim-top: 18px;
   --ll-tim-bottom: 18px;
-  padding: 8px 10px !important;
+  padding: 6px 12px !important;
+  min-height: 0 !important;
   box-shadow: none !important;
 }
 
@@ -805,4 +806,31 @@
 :scope[data-liuli-chat-style="tim"] .message-container .msg-content-container:not(.container--personalization):not(#ll)::before {
   content: none !important;
 }
+}
+
+body[data-liuli-chat-style="tg"] {
+  --ll-tg-bubble-scale: var(--ll-bubble-scale, 1);
+}
+
+/* 限宽以各聊天区为基准。TG 中 QQ 装扮已隐藏，文字照常限宽。 */
+@scope (body[data-liuli-limit-bubble-width][data-liuli-chat-style="tg"]) {
+  .chat-msg-area {
+    container-type: inline-size;
+  }
+
+  .chat-msg-area .message-content__wrapper:has(.msg-content-container .text-element)
+    .msg-content-container:not(:has(.pic-element, .file-element, .video-element, .market-face-element, .ptt-element, .ark-view-message, .forward-msg)):not(#ll) {
+    box-sizing: border-box !important;
+    max-width: min(100%, var(--ll-bubble-width-limit)) !important;
+    min-width: 0 !important;
+  }
+
+  .chat-msg-area .msg-content-container .text-element {
+    overflow-wrap: anywhere;
+  }
+}
+
+body[data-liuli-chat-style="tg"][data-liuli-hide-image-names]
+.msg-content-container[data-liuli-image-name-hidden] > .user-name:not(#ll) {
+  display: none !important;
 }

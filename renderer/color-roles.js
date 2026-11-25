@@ -27,7 +27,7 @@ export const ROLE_SLOTS = [
     {
         key: "selected", label: "选中项", def: "primary",
         hint: "会话列表、侧边栏、分段按钮里「当前选中」那一项的底色。",
-        options: CONTAINERS
+        options: [["accent", "强调色"], ...CONTAINERS]
     },
     {
         key: "self", label: "自己的气泡", def: "primary",
@@ -84,10 +84,14 @@ export function roleVars(mcu, theme, isDark, roles) {
     const hex = v => mcu.hexFromArgb(v);
     const v = {};
 
-    const sel = roles.selected || "primary";
-    const sp = containerPair(mcu, s, sel === "secondary" || sel === "tertiary" ? sel : "primary");
+    const sel = roles.selected === "secondary" || roles.selected === "tertiary" ? roles.selected : "primary";
+    const sp = roles.selected === "accent"
+        ? ["var(--ll-brand)", "var(--ll-on-brand)"]
+        : containerPair(mcu, s, sel);
     v["--ll-primary-container"] = sp[0];
     v["--ll-on-primary-container"] = sp[1];
+    v["--ll-selection-role-bg"] = sp[0];
+    v["--ll-selection-role-ink"] = sp[1];
 
     let self;
     switch (roles.self) {
@@ -138,7 +142,6 @@ export function buildRoleControls(host, onChange) {
     pv.appendChild(self);
     box.appendChild(pv);
 
-    const roles = loadRoles();
     const segs = {};
     ROLE_SLOTS.forEach(slot => {
         const row = el("div", "liuli-wp-fit liuli-mode-row liuli-roles-row");
@@ -149,9 +152,10 @@ export function buildRoleControls(host, onChange) {
             b.type = "button";
             b.dataset.v = val;
             b.addEventListener("click", () => {
+                const roles = loadRoles();
                 roles[slot.key] = val;
                 saveRoles(roles);
-                draw();
+                draw(roles);
                 if (onChange) onChange(roles);
             });
             seg.appendChild(b);
@@ -163,14 +167,14 @@ export function buildRoleControls(host, onChange) {
     });
     const reset = el("div", "liuli-field__hint liuli-lo-reset", "恢复默认配色");
     reset.addEventListener("click", () => {
-        Object.assign(roles, defaultRoles());
+        const roles = defaultRoles();
         saveRoles(roles);
-        draw();
+        draw(roles);
         if (onChange) onChange(roles);
     });
     box.appendChild(reset);
 
-    function draw() {
+    function draw(roles = loadRoles()) {
         ROLE_SLOTS.forEach(slot => {
             segs[slot.key].querySelectorAll(".liuli-seg__item").forEach(b => {
                 b.classList.toggle("is-active", b.dataset.v === roles[slot.key]);
@@ -178,10 +182,5 @@ export function buildRoleControls(host, onChange) {
         });
     }
     draw();
-    // 别的窗口改了也跟着刷新按钮状态
-    addEventListener("storage", e => {
-        if (e.key !== ROLE_KEY) return;
-        Object.assign(roles, loadRoles());
-        draw();
-    });
+    return draw;
 }

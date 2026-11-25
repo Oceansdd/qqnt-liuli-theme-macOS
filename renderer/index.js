@@ -5,7 +5,8 @@
 // 4) 顽固容器内联覆盖 + 对比度修复
 
 const SLUG = "liuli-dsh-theme";
-import { installLayout, applyBar, nativeBarItem, applyAll as llLayoutPass, buildLayoutSection } from "./layout-custom.js";
+import "./pin-groups.js";
+import { installLayout, applyBar, nativeBarItem, getActiveInputArea, isInputRendered, applyAll as llLayoutPass, buildLayoutSection, addSettingsGroup } from "./layout-custom.js";
 import { installArkExternal } from "./ark-external.js";
 import { ROLE_KEY, loadRoles, roleVars, accentPalette, buildRoleControls } from "./color-roles.js";
 // 诊断运行时（契约 installer/DIAG-COVERAGE.md 第三、3.2、3.3、3.5 节）：
@@ -19,7 +20,7 @@ import {
 beginBoot();
 installDiagRuntime();
 const ASSET_BASE = "local://profile/plugins/" + SLUG + "/assets/";
-const FILES = ["wallpaper.css", "qq-tokens.css", "palette.css", "liuli.css", "typography.css", "panel.css", "settings-page.css", "details.css", "no-dividers.css", "input-bar.css", "bubbles.css", "layout.css", "lists.css", "motion.css", "markdown.css", "layout-custom.css", "liquid-glass.css"];
+const FILES = ["wallpaper.css", "qq-tokens.css", "palette.css", "liuli.css", "typography.css", "panel.css", "settings-page.css", "details.css", "no-dividers.css", "input-bar.css", "bubbles.css", "layout.css", "lists.css", "motion.css", "markdown.css", "layout-custom.css", "liquid-glass.css", "pin-groups.css"];
 const STYLE_ID = "liuli-dsh-theme";
 const WALLPAPER = ASSET_BASE + "wallpaper.jpg";
 // 默认壁纸不随插件发布：assets/wallpaper.css（内联壁纸）和 assets/wallpaper.jpg（取色用）
@@ -49,6 +50,10 @@ function installRouteScope() {
             : (hash === "#/main" || hash.indexOf("#/main/") === 0) ? "main"
             : (hash === "" || hash === "#/blank") ? "boot" : "aux";
         if (body.dataset.liuliScope !== scope) body.dataset.liuliScope = scope;
+        // 预创建窗口可以先恢复外观，再切到真正的会话页。
+        if (llPinGroupsInContactRoute !== undefined && llPinGroupsInContactRoute !== llPinGroupsRoute()) {
+            llApplyPinGroups();
+        }
     };
     sync();
     addEventListener("hashchange", sync);
@@ -241,12 +246,22 @@ function deriveVars(mcu, sourceHex, isDark, roles) {
     };
 }
 
+let llPaletteRevision = 0;
+let llColorPageRefresh;
+let llRoleControlsRefresh;
+function llColorSource() {
+    const raw = localStorage.getItem(LL_COLOR_SOURCE_KEY);
+    return raw ? JSON.parse(raw) : { mode: "wallpaper", hex: DEFAULT_SOURCE.toUpperCase() };
+}
+
 async function applyDynamicPalette() {
     if (shouldSkipTheme() || window.__liuliPaletteApplied) return;
     window.__liuliPaletteApplied = true;
-    let source = DEFAULT_SOURCE;
-    try { source = await extractSource(); } catch (e) { source = DEFAULT_SOURCE; }
+    const revision = ++llPaletteRevision;
+    const choice = llColorSource();
+    const source = choice.mode === "custom" ? choice.hex : await extractSource().catch(() => DEFAULT_SOURCE);
     const mcu = await import(ASSET_BASE + "mcu.js");
+    if (revision !== llPaletteRevision) return;
     const isDark = llIsDark();
     const roles = loadRoles();
     const vars = deriveVars(mcu, source, isDark, roles);
@@ -266,7 +281,10 @@ async function applyDynamicPalette() {
     body.toggleAttribute("data-liuli-other-solid", vars["--ll-bubble-other"] != null);
     // 色板换了明暗，随模式变化的遮罩 / 阴影也要跟着重写（需求 A.2）
     llApplyModeSettings();
-    console.log("[liuli-dsh-theme] wallpaper source = " + source + " (brand " + vars["--ll-brand"] + ")");
+    llColorPageRefresh?.();
+    llRoleControlsRefresh?.(roles);
+    llApplyChatExtras();
+    console.log("[liuli-dsh-theme] color source = " + source + " (brand " + vars["--ll-brand"] + ")");
 }
 
 /* ---------- 承载层：只这些允许挂玻璃 ---------- */
@@ -492,10 +510,32 @@ const LL_RESET_KNOWN_KEYS = [
 /* ---------- macOS 文字 + 配色设置文件持久化 ----------
  * 原有 localStorage 用于即时同步；appearance.json 负责重启持久化。
  * 写失败必须可见，不能再静默吞掉；独立于布局和壁纸两个已验证的存档。 */
+const LL_COLOR_SOURCE_KEY = "liuli-color-source";
 const LL_MATERIAL_KEY = "liuli-material";
+const LL_HIDE_IMAGE_NAMES_KEY = "liuli-hide-image-names";
+const LL_BUBBLE_SIZE_KEY = "liuli-bubble-size";
 const LL_CHAT_STYLE_KEY = "liuli-chat-style";
 const LL_CHAT_STYLES = [["tg", "TG"], ["classic", "原版"], ["tim", "TIM"]];
-const LL_APPEARANCE_KEYS = ["liuli-color-roles", "liuli-md-render", "liuli-font", "liuli-dsh-mode", LL_MATERIAL_KEY, "liuli-chat-backdrop", LL_CHAT_STYLE_KEY];
+const LL_INPUT_LAYOUT_KEY = "liuli-input-layout";
+const LL_HIDE_EMPTY_LOGO_KEY = "liuli-hide-empty-logo";
+const LL_GROUP_COLORS = [
+    { key: "liuli-group-title-color", role: "title", label: "群头衔", fallback: "--ll-acrylic" },
+    { key: "liuli-group-admin-color", role: "admin", label: "管理员", fallback: "--ll-secondary-container" },
+    { key: "liuli-group-owner-color", role: "owner", label: "群主", fallback: "--ll-tertiary-container" }
+];
+const LL_CHAT_FONT_FIELDS = [
+    { key: "liuli-chat-body-size", role: "body", label: "消息正文", min: 12, max: 24, initial: 14 },
+    { key: "liuli-chat-name-size", role: "name", label: "发送者昵称", min: 10, max: 14, initial: 12 },
+    { key: "liuli-chat-tag-size", role: "tag", label: "群头衔与身份标签", min: 9, max: 14, initial: 11 }
+];
+const LL_SENDER_COLOR_KEY = "liuli-sender-color";
+const LL_SELECTION_STRENGTH_KEY = "liuli-selection-strength";
+const LL_PIN_GROUP_KEY = "liuli-pin-group";
+const LL_PIN_COLOR_KEY = "liuli-pin-color";
+const LL_PIN_COLLAPSED_KEY = "liuli-pin-collapsed";
+const LL_PIN_KEYS = [LL_PIN_GROUP_KEY, LL_PIN_COLOR_KEY, LL_PIN_COLLAPSED_KEY];
+const LL_CHAT_EXTRA_KEYS = [LL_SELECTION_STRENGTH_KEY, LL_SENDER_COLOR_KEY, LL_HIDE_EMPTY_LOGO_KEY, ...LL_CHAT_FONT_FIELDS.map(({ key }) => key), ...LL_GROUP_COLORS.flatMap(({ key }) => [key, key + "-text"])];
+const LL_APPEARANCE_KEYS = ["liuli-color-roles", "liuli-md-render", "liuli-font", "liuli-dsh-mode", LL_MATERIAL_KEY, "liuli-chat-backdrop", LL_CHAT_STYLE_KEY, LL_BUBBLE_SIZE_KEY, LL_HIDE_IMAGE_NAMES_KEY, LL_COLOR_SOURCE_KEY, LL_INPUT_LAYOUT_KEY, ...LL_CHAT_EXTRA_KEYS, ...LL_PIN_KEYS];
 let llAppearanceEditVersion = 0;
 let llAppearanceSubscribed = false;
 const llAppearancePending = new Set();
@@ -572,6 +612,10 @@ async function llRestoreAppearance(boot) {
         llApplyMaterial();
         llApplyChatBackdrop();
         llApplyChatStyle();
+        llApplyInputLayout();
+        llApplyBubbleSize();
+        llApplyChatExtras();
+        llApplyPinGroups();
         // 其它 QQ 窗口在运行时修改配置时，立即重应用视觉效果。
         try { llApplyFont(); llApplyMode(false); llMarkdownPass(); }
         catch (e) { console.warn("[liuli] appearance 重新应用失败:", e); }
@@ -699,7 +743,7 @@ try {
             llSuppressBroadcast = true;
             applySettings(incoming, false);
             // 面板若存在，同步滑条位置
-            const sliders = document.querySelectorAll(".liuli-slider:not([data-liuli-chat-backdrop])");
+            const sliders = document.querySelectorAll(".liuli-slider:not([data-liuli-chat-backdrop], [data-liuli-bubble-size], [data-liuli-chat-font], [data-liuli-selection-slider])");
             if (sliders.length === FIELDS.length) {
                 FIELDS.forEach(function (f, i) {
                     const el = sliders[i];
@@ -946,7 +990,7 @@ function buildInputOverlay() {
     // 工具栏节点会被 Vue 重建，所以每次都重新查询，监听挂在 document 上。
     var hoverTimer = 0;
     function setExpanded(open) {
-        var bar = document.querySelector(".chat-func-bar");
+        var bar = getActiveInputArea()?.querySelector(".chat-func-bar");
         if (!bar) return;
         // 按钮状态先同步：工具栏节点可能被 Vue 重建，下面提前 return 时按钮也不能停在 ×
         more.dataset.open = open ? "1" : "0";
@@ -954,7 +998,7 @@ function buildInputOverlay() {
         if (open) { llLabelFuncBar(bar); applyBar(); }
         if (bar.classList.contains("liuli-expanded") === open) return;
         bar.classList.toggle("liuli-expanded", open);
-        var area = document.querySelector(".chat-input-area");
+        var area = getActiveInputArea();
         if (area) {
             if (open) area.style.setProperty("z-index", "40", "important");
             else area.style.removeProperty("z-index");
@@ -979,13 +1023,13 @@ function buildInputOverlay() {
 
     // 点别处收起工具栏
     document.addEventListener("mousedown", function (e) {
-        var bar = document.querySelector(".chat-func-bar");
+        var bar = getActiveInputArea()?.querySelector(".chat-func-bar");
         if (!bar || !bar.classList.contains("liuli-expanded")) return;
         if (bar.contains(e.target) || more.contains(e.target) || emoji.contains(e.target)) return;
         bar.classList.remove("liuli-expanded");
         more.dataset.open = "0";
         more.title = "更多";
-        var area = document.querySelector(".chat-input-area");
+        var area = getActiveInputArea();
         if (area) area.style.removeProperty("z-index");
     }, true);
 
@@ -996,7 +1040,7 @@ function buildInputOverlay() {
  * （"截图 Ctrl + Alt + A" → "截图"）。CSS 用 attr(data-liuli-label) 画出来。 */
 function llLabelFuncBar(bar) {
     try {
-        bar = bar || document.querySelector(".chat-func-bar");
+        bar = bar || getActiveInputArea()?.querySelector(".chat-func-bar");
         if (!bar) return;
         bar.querySelectorAll(".icon-item[aria-label]").forEach(function (it) {
             var t = (it.getAttribute("aria-label") || "").replace(/\s*(Ctrl|Alt|Shift|⌘)[\s\S]*$/, "").trim();
@@ -1005,12 +1049,43 @@ function llLabelFuncBar(bar) {
     } catch (e) { /* 静默 */ }
 }
 
-/* 每次 tick 只同步位置，不动按钮节点 */
+let llInputBarTarget = null;
+let llInputBarObserved = new Set();
+const llInputBarResize = new ResizeObserver(mountInputBar);
+
+/* 随输入区缩放同步位置，只在可见按钮变化时重建。 */
 function mountInputBar() {
+    const native = document.body.dataset.liuliInputLayout === "native";
+    const areas = [...document.querySelectorAll(".chat-input-area")];
+    // 退出多选后先解除旧标记，编辑区才能重新参与布局。
+    for (const candidate of areas) {
+        if (candidate.hasAttribute("data-liuli-multiselect") &&
+            !isInputRendered(candidate.querySelector(":scope > ul.forward-ops"))) {
+            candidate.removeAttribute("data-liuli-multiselect");
+        }
+    }
+    const area = native ? null : getActiveInputArea();
+    const box = area?.querySelector(".msg-input") || area;
+    const multiselect = !!area && isInputRendered(area.querySelector(":scope > ul.forward-ops"));
+    for (const candidate of areas) {
+        candidate.toggleAttribute("data-liuli-multiselect", candidate === area && multiselect);
+    }
+    // 同时观察可切换输入区及编辑区，隐藏父容器切换也能触发现有定位生命周期。
+    const observed = new Set(native ? [] : areas.flatMap(candidate =>
+        [candidate, candidate.querySelector(".msg-input")].filter(Boolean)));
+    for (const previous of llInputBarObserved) {
+        if (!observed.has(previous)) llInputBarResize.unobserve(previous);
+    }
+    for (const current of observed) {
+        if (!llInputBarObserved.has(current)) llInputBarResize.observe(current, { box: "border-box" });
+    }
+    llInputBarObserved = observed;
+    llInputBarTarget = box;
+    if (native) return;
     try {
         var overlay = buildInputOverlay();
-        var area = document.querySelector(".chat-input-area");
-        if (!area) {
+        overlay.toggleAttribute("data-liuli-multiselect", multiselect);
+        if (!area || multiselect) {
             overlay.style.display = "none";
             return;
         }
@@ -1019,17 +1094,22 @@ function mountInputBar() {
             overlay.style.display = "none";
             return;
         }
+        // 多选时编辑区 display:none，不用零尺寸重建按钮或覆盖有效坐标。
+        var br = box === area ? r : box.getBoundingClientRect();
+        if (br.width <= 0 || br.height <= 0) {
+            overlay.style.display = "none";
+            return;
+        }
         overlay.style.display = "flex";
-        // 贴输入框左下角：多行时按钮留在底行（TG 行为），不漂到中间
-        var box = area.querySelector(".msg-input");
-        var br = box ? box.getBoundingClientRect() : r;
+        // 贴输入框左下角：多行时按钮留在底行（TG 行为）
         overlay.style.left = Math.round(br.left + 6) + "px";
+        overlay.style.width = Math.max(0, Math.round(br.width - 12)) + "px";
         overlay.style.top = Math.round(br.bottom - 6 - 28) + "px";
 
         // 状态跟随实际，而不是相信本地记录：
         // 工具栏可能被"点别处收起"或 QQ 自己移除，local 的 data-open 会失真，
         // 表现就是按钮显示成 × 但工具栏其实没开。
-        var bar = document.querySelector(".chat-func-bar");
+        var bar = area.querySelector(".chat-func-bar");
         var expanded = !!(bar && bar.classList.contains("liuli-expanded"));
         var moreBtn = overlay.querySelector("#liuli-func-toggle");
         if (moreBtn && moreBtn.dataset.open !== (expanded ? "1" : "0")) {
@@ -1038,7 +1118,7 @@ function mountInputBar() {
         }
         var panel = document.querySelector(".expression-panel");
         var panelOpen = !!(panel && panel.getBoundingClientRect().height > 10);
-        llSyncPins(overlay);
+        llSyncPins(overlay, applyBar(br.width));
         var emojiBtn = overlay.querySelector("#liuli-emoji-btn");
         if (emojiBtn && emojiBtn.dataset.open !== (panelOpen ? "1" : "0")) {
             emojiBtn.dataset.open = panelOpen ? "1" : "0";
@@ -1048,26 +1128,22 @@ function mountInputBar() {
 
 /* 输入框里的按钮：按布局设置建代理按钮，点了转给 QQ 原生的工具栏按钮。
  * 名单没变就不重建（图标第一次没拿到时会补）。 */
-function llSyncPins(overlay) {
+function llSyncPins(overlay, layout) {
+    if (!layout) return;
+    const { left: labels, right } = layout;
     overlay = overlay || document.getElementById("liuli-input-overlay");
     var pins = overlay && overlay.querySelector("#liuli-bar-pins");
     if (!pins) return;
-    var labels = applyBar();
-    if (!labels.length && !document.querySelector(".chat-input-area .chat-func-bar")) return;
-    // 只放当前会话里 QQ 真的有的按钮（#20）：「我的手机」这类会话 QQ 原生工具栏没有「表情」「图片」，
-    // 以前照样摆出代理按钮，点了找不到原生按钮就什么都不做，看起来就是「按了没反应」。
-    if (document.querySelector(".chat-input-area .chat-func-bar .bar-icon")) {
-        labels = labels.filter(function (label) { return !!nativeBarItem(label); });
-    }
-    var key = labels.join("\u0001");
+    const key = JSON.stringify([labels, right]);
     var complete = !pins.querySelector("[data-noicon]");
     if (pins.dataset.key === key && complete) return;
     pins.dataset.key = key;
     pins.innerHTML = "";
-    labels.forEach(function (label) {
+    for (const label of right ? [...labels, right] : labels) {
         var b = document.createElement("button");
         b.type = "button";
         b.className = "liuli-bar-btn";
+        b.classList.toggle("liuli-bar-btn--right", label === right);
         if (label === "表情") b.id = "liuli-emoji-btn";
         b.title = label;
         b.setAttribute("aria-label", label);
@@ -1083,7 +1159,8 @@ function llSyncPins(overlay) {
             if (n) n.click();
         });
         pins.appendChild(b);
-    });
+    }
+    document.body.style.setProperty("--liuli-bar-right-pad", right ? "82px" : "50px");
     // 输入框左边留出按钮的位置：每个按钮 28 + 间距 4，外加左右边距
     document.body.style.setProperty("--liuli-bar-pad", (12 + (labels.length + 1) * 32) + "px");
 }
@@ -1101,8 +1178,26 @@ function llSyncPins(overlay) {
  * 挪完打个标记，避免反复搬动。
  */
 const llSenderHomes = new WeakMap();
+function isImageOnlyContent(content) {
+    let images = 0;
+    function visit(node) {
+        if (node.nodeType === Node.COMMENT_NODE) return true;
+        if (node.nodeType === Node.TEXT_NODE) return !node.textContent.trim();
+        if (node.nodeType !== Node.ELEMENT_NODE) return false;
+        if (node.classList.contains("pic-element")) {
+            images++;
+            return true;
+        }
+        return ["DIV", "SPAN"].includes(node.tagName) &&
+            [...node.classList].every(name => ["message-content", "mix-message__inner"].includes(name)) &&
+            [...node.childNodes].every(visit);
+    }
+    return !!content && [...content.childNodes].every(visit) && images > 0;
+}
+
 function moveSenderIntoBubble() {
     try {
+        const hideImageNames = document.body.hasAttribute("data-liuli-hide-image-names");
         var containers = document.querySelectorAll(".message-container");
         for (var i = 0; i < containers.length; i++) {
             var mc = containers[i];
@@ -1120,6 +1215,8 @@ function moveSenderIntoBubble() {
                 llSenderHomes.delete(name);
                 continue;
             }
+            bubble.toggleAttribute("data-liuli-image-name-hidden", hideImageNames &&
+                isImageOnlyContent(bubble.querySelector(":scope > .message-content")));
             if (bubble.contains(name)) continue;
             // 把姓名节点搬到气泡最前面
             llSenderHomes.set(name, { parent: name.parentNode, next: name.nextSibling });
@@ -1328,9 +1425,15 @@ function llRiseIn(els, step) {
 var llSel = { id: null, root: null, obs: null };
 function llWatchContactList() {
     var root = document.querySelector(".recent-contact");
-    if (!root || llSel.root === root) return;
+    if (!root) return;
+    if (llSel.root === root) {
+        // 同一个列表从隐藏变为可见时，置顶模块可能还未挂载。
+        window.__liuliPinGroups.refresh();
+        return;
+    }
     if (llSel.obs) llSel.obs.disconnect();
     llSel.root = root;
+    llApplyPinGroups();
     var cur = llVisibleIn(root, ".recent-contact-item.recent-contact-item--selected")[0];
     llSel.id = cur ? cur.getAttribute("data-contact-id") : null;
     llSel.obs = new MutationObserver(function (recs) {
@@ -1360,7 +1463,7 @@ function llWatchContactList() {
                     pseudoElement: "::before"
                 });
             } else {
-                gained.animate([{ opacity: 0, transform: "scale(0.94)" }, { opacity: 1, transform: "none" }],
+                gained.animate([{ opacity: 0, transform: "scale(0.94)" }, { opacity: "var(--ll-selection-alpha, 1)", transform: "none" }],
                     { duration: 260, easing: LL_EASE, pseudoElement: "::before" });
             }
         } catch (e) {}
@@ -1556,7 +1659,7 @@ function installSideListObserver() {
         // 合并到一帧：选人对话框等一次挂几千个节点时不会被触发成百上千次
         llSideRaf = requestAnimationFrame(function () {
             llSideRaf = 0;
-            try { llWatchContactList(); llGroupMembersPass(); } catch (e) {}
+            try { llWatchContactList(); window.__liuliPinGroups.refresh(); llGroupMembersPass(); } catch (e) {}
         });
     });
     obs.observe(document.body, { childList: true, subtree: true });
@@ -2831,11 +2934,15 @@ try {
     window.addEventListener("storage", function (e) {
         if (shouldSkipTheme()) return;
         if (e.key === LL_MATERIAL_KEY || e.key === null) llApplyMaterial();
-        if (e.key === LL_CHAT_STYLE_KEY || e.key === null) llApplyChatStyle();
+        if (LL_PIN_KEYS.includes(e.key) || e.key === null) llApplyPinGroups();
+        if (e.key === LL_INPUT_LAYOUT_KEY || e.key === null) llApplyInputLayout();
+        if (LL_CHAT_EXTRA_KEYS.includes(e.key) || e.key === null) llApplyChatExtras();
+        if (e.key === LL_BUBBLE_SIZE_KEY || e.key === null) llApplyBubbleSize();
+        if (e.key === LL_CHAT_STYLE_KEY || e.key === LL_HIDE_IMAGE_NAMES_KEY || e.key === null) llApplyChatStyle();
         if (e.key === "liuli-chat-backdrop" || e.key === null) llApplyChatBackdrop();
         if (e.key === LL_MODE_KEY) { llApplyMode(false); if (typeof llModeRefresh === "function") llModeRefresh(); }
         // 配色（颜色角色）在别的窗口改了：重新派生一次色板
-        if (e.key === ROLE_KEY) { window.__liuliPaletteApplied = false; applyDynamicPalette(); }
+        if (e.key === ROLE_KEY || e.key === LL_COLOR_SOURCE_KEY) { window.__liuliPaletteApplied = false; applyDynamicPalette(); }
     });
 } catch (e) {}
 let llModeRefresh = null;
@@ -2956,6 +3063,7 @@ function llApplyMaterial(root = document) {
     const mode = llMaterialMode();
     const liquid = mode === "liquid-glass";
     document.body.toggleAttribute("data-liuli-liquid-glass", liquid);
+    llApplySelectionStrength();
     for (const button of root.querySelectorAll("[data-liuli-material-option]")) {
         const selected = button.dataset.liuliMaterialOption === mode;
         button.classList.toggle("is-active", selected);
@@ -2989,6 +3097,16 @@ function llApplyChatStyle(root = embeddedPanel || document) {
             }
             window.__liuliMsgObs?.takeRecords();
         }
+    }
+    const hideImageNames = localStorage.getItem(LL_HIDE_IMAGE_NAMES_KEY) === "1";
+    if (body.hasAttribute("data-liuli-hide-image-names") !== hideImageNames) {
+        body.toggleAttribute("data-liuli-hide-image-names", hideImageNames);
+        if (style === "tg") liuliMessagePass();
+    }
+    for (const button of root.querySelectorAll("[data-liuli-hide-image-names-option]")) {
+        const selected = (button.dataset.liuliHideImageNamesOption === "1") === hideImageNames;
+        button.classList.toggle("is-active", selected);
+        button.setAttribute("aria-pressed", String(selected));
     }
     for (const button of root.querySelectorAll("[data-liuli-chat-style-option]")) {
         const selected = button.dataset.liuliChatStyleOption === style;
@@ -3070,6 +3188,48 @@ function buildChatBackdropControls(host) {
         host.appendChild(field);
     }
     llApplyChatBackdrop(host);
+}
+
+const LL_BUBBLE_SIZE_FIELDS = [
+    { key: "scale", label: "气泡大小", min: 80, max: 140, hint: "调整 TG 普通气泡留白。" },
+    { key: "width", label: "气泡最大宽度", min: 40, max: 100, hint: "限制 TG 纯文字气泡宽度。100% 使用原有宽度上限。" }
+];
+
+function llBubbleSize() {
+    const raw = localStorage.getItem(LL_BUBBLE_SIZE_KEY);
+    return raw ? JSON.parse(raw) : { scale: 100, width: 100 };
+}
+
+function llApplyBubbleSize(root = embeddedPanel || document) {
+    const { scale, width } = llBubbleSize();
+    const body = document.body;
+    body.style.setProperty("--ll-bubble-scale", String(scale / 100));
+    body.style.setProperty("--ll-bubble-width-limit", width + "cqi");
+    body.toggleAttribute("data-liuli-limit-bubble-width", width < 100);
+    for (const slider of root.querySelectorAll("[data-liuli-bubble-size]")) {
+        const value = slider.dataset.liuliBubbleSize === "scale" ? scale : width;
+        slider.value = value;
+        slider.style.setProperty("--liuli-pct", (value - slider.min) / (slider.max - slider.min) * 100 + "%");
+        slider.closest(".liuli-field").querySelector(".liuli-field__value").textContent = value + "%";
+    }
+}
+
+function buildBubbleSizeControls(host) {
+    for (const options of LL_BUBBLE_SIZE_FIELDS) {
+        const { field, slider } = buildSliderField({ ...options, step: 1 });
+        slider.dataset.liuliBubbleSize = options.key;
+        slider.addEventListener("input", () => {
+            const sizes = llBubbleSize();
+            sizes[options.key] = Number(slider.value);
+            llLocalAppearance(LL_BUBBLE_SIZE_KEY, JSON.stringify(sizes));
+            llApplyBubbleSize(host);
+        });
+        slider.addEventListener("change", () => {
+            void llPersistAppearance(LL_BUBBLE_SIZE_KEY, JSON.stringify(llBubbleSize()));
+        });
+        host.appendChild(field);
+    }
+    llApplyBubbleSize(host);
 }
 
 function buildAppearanceChoice(host, title, options, attribute, key, apply) {
@@ -3452,6 +3612,373 @@ function llBuildTabs(container, groups) {
     return { bar: bar, pages: pages, show: show };
 }
 
+function llApplyInputLayout(root = embeddedPanel || document) {
+    const body = document.body;
+    const native = localStorage.getItem(LL_INPUT_LAYOUT_KEY) === "native";
+    const inputLayout = native ? "native" : "tg";
+    if (body.dataset.liuliInputLayout !== inputLayout) {
+        body.dataset.liuliInputLayout = inputLayout;
+        if (native) {
+            for (const bar of document.querySelectorAll(".chat-func-bar.liuli-expanded")) {
+                bar.classList.remove("liuli-expanded");
+                bar.closest(".chat-input-area")?.style.removeProperty("z-index");
+            }
+            applyBar();
+        } else if (document.getElementById("liuli-input-overlay")) {
+            mountInputBar();
+        }
+    }
+    for (const button of root.querySelectorAll("[data-liuli-input-layout-option]")) {
+        const active = button.dataset.liuliInputLayoutOption === inputLayout;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-pressed", String(active));
+    }
+}
+
+let llPinGroupsInContactRoute;
+function llPinGroupsRoute() {
+    return document.body.dataset.liuliScope === "main" || location.hash === "#/chat";
+}
+
+function llApplyPinGroups(root = embeddedPanel || document) {
+    const group = localStorage.getItem(LL_PIN_GROUP_KEY) === "1";
+    const color = localStorage.getItem(LL_PIN_COLOR_KEY) === "1";
+    const collapsed = localStorage.getItem(LL_PIN_COLLAPSED_KEY) === "1";
+    llPinGroupsInContactRoute = llPinGroupsRoute();
+    window.__liuliPinGroups.apply({
+        group: group && llPinGroupsInContactRoute,
+        color,
+        collapsed,
+        onToggleCollapsed(next) {
+            void llPersistAppearance(LL_PIN_COLLAPSED_KEY, next ? "1" : "0");
+            llApplyPinGroups();
+        }
+    });
+    for (const button of root.querySelectorAll("[data-liuli-pin-group-option], [data-liuli-pin-color-option]")) {
+        const isGroup = button.hasAttribute("data-liuli-pin-group-option");
+        const value = isGroup ? button.dataset.liuliPinGroupOption : button.dataset.liuliPinColorOption;
+        const active = (value === "1") === (isGroup ? group : color);
+        button.disabled = !isGroup && !group;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-pressed", String(active));
+    }
+}
+
+function llApplySelectionStrength(root = embeddedPanel || document) {
+    const value = Number(localStorage.getItem(LL_SELECTION_STRENGTH_KEY) ?? 100);
+    const body = document.body;
+    const alpha = value / 100;
+    body.style.setProperty("--ll-selection-alpha", alpha);
+    let softened = false;
+    if (value < 100) {
+        const style = getComputedStyle(body);
+        const base = style.getPropertyValue("--ll-selection-role-bg").trim() ||
+            style.getPropertyValue("--ll-primary-container").trim();
+        const ink = style.getPropertyValue("--ll-selection-role-ink").trim() ||
+            style.getPropertyValue("--ll-on-primary-container").trim();
+        if (/^#[0-9a-f]{6}$/i.test(base) && /^#[0-9a-f]{6}$/i.test(ink)) {
+            // 仅用预览底面估算字色。选中伪元素仍用原色，由透明度露出各自的列表背景。
+            const acrylic = style.getPropertyValue("--ll-acrylic").split(",").map(Number);
+            const luminance = channels => {
+                const [r, g, b] = channels.map(channel => llSrgbToY(channel / 255));
+                return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            };
+            const bgY = luminance(rgbTriplet(base).split(", ").map((channel, i) =>
+                Number(channel) * alpha + acrylic[i] * (1 - alpha)));
+            const inkY = luminance(rgbTriplet(ink).split(", ").map(Number));
+            const contrast = (Math.max(inkY, bgY) + 0.05) / (Math.min(inkY, bgY) + 0.05);
+            const useRoleInk = contrast >= 4.5;
+            const darkInk = useRoleInk ? inkY < bgY : bgY > 0.179;
+            body.style.setProperty("--ll-selection-ink", useRoleInk ? ink : (darkInk ? "#000000" : "#FFFFFF"));
+            body.style.setProperty("--ll-selection-halo", darkInk ? "#FFFFFF" : "#000000");
+            softened = true;
+        }
+    }
+    body.toggleAttribute("data-liuli-soft-selection", softened);
+    const slider = root.querySelector("[data-liuli-selection-slider]");
+    if (slider) {
+        slider.value = value;
+        slider.style.setProperty("--liuli-pct", ((value - 15) / 85) * 100 + "%");
+        slider.closest(".liuli-field").querySelector(".liuli-field__value").textContent = value + "%";
+    }
+}
+
+function buildSelectionStrengthControl(host) {
+    const { field, slider } = buildSliderField({
+        label: "选中底色不透明度", min: 15, max: 100, step: 1,
+        hint: "降低不透明度会透出列表背景，文字与头像保持清晰。"
+    });
+    slider.dataset.liuliSelectionSlider = "";
+    slider.addEventListener("input", () => {
+        llLocalAppearance(LL_SELECTION_STRENGTH_KEY, slider.value);
+        llApplySelectionStrength(host);
+    });
+    slider.addEventListener("change", () => {
+        void llPersistAppearance(LL_SELECTION_STRENGTH_KEY, slider.value);
+    });
+    host.appendChild(field);
+}
+
+function llApplyChatExtras(root = embeddedPanel || document) {
+    llApplySelectionStrength(root);
+    llApplyChatFonts(root);
+    const body = document.body;
+    const hideLogo = localStorage.getItem(LL_HIDE_EMPTY_LOGO_KEY) === "1";
+    body.toggleAttribute("data-liuli-hide-empty-logo", hideLogo);
+
+    for (const button of root.querySelectorAll("[data-liuli-hide-empty-logo-option]")) {
+        const active = (button.dataset.liuliHideEmptyLogoOption === "1") === hideLogo;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-pressed", String(active));
+    }
+    const senderColor = localStorage.getItem(LL_SENDER_COLOR_KEY);
+    body.toggleAttribute("data-liuli-custom-sender-color", !!senderColor);
+    if (senderColor) body.style.setProperty("--ll-sender-color", senderColor);
+    else body.style.removeProperty("--ll-sender-color");
+    const senderPicker = root.querySelector("[data-liuli-sender-color]");
+    if (senderPicker) {
+        const fallback = getComputedStyle(body).getPropertyValue("--ll-name").trim();
+        senderPicker.value = senderColor || (/^#[0-9a-f]{6}$/i.test(fallback) ? fallback : DEFAULT_SOURCE);
+        senderPicker.nextElementSibling.disabled = !senderColor;
+    }
+    for (const { key, role, fallback } of LL_GROUP_COLORS) {
+        const color = localStorage.getItem(key);
+        const customText = localStorage.getItem(key + "-text");
+        let automaticText;
+        if (color) {
+            const [r, g, b] = rgbTriplet(color).split(", ").map(channel => llSrgbToY(Number(channel) / 255));
+            automaticText = 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.179 ? "#000000" : "#FFFFFF";
+            body.style.setProperty("--ll-group-" + role + "-bg", color);
+        } else {
+            body.style.removeProperty("--ll-group-" + role + "-bg");
+        }
+        const foreground = customText || automaticText;
+        if (foreground) body.style.setProperty("--ll-group-" + role + "-fg", foreground);
+        else body.style.removeProperty("--ll-group-" + role + "-fg");
+        if (role === "title") {
+            body.toggleAttribute("data-liuli-custom-title-color", !!color);
+            body.toggleAttribute("data-liuli-custom-title-text", !!foreground);
+        }
+        const style = getComputedStyle(body);
+        for (const picker of root.querySelectorAll('[data-liuli-group-color="' + role + '"]')) {
+            const isText = picker.dataset.liuliGroupColorPart === "text";
+            let defaultColor = style.getPropertyValue(isText
+                ? (role === "title" ? "--ll-on-glass-2" : fallback.replace("--ll-", "--ll-on-"))
+                : fallback).trim();
+            if (!isText && role === "title" && defaultColor.includes(",")) {
+                defaultColor = "#" + defaultColor.split(",").map(channel => Number(channel.trim()).toString(16).padStart(2, "0")).join("");
+            }
+            const saved = isText ? customText : color;
+            picker.value = saved || (isText && automaticText) || (/^#[0-9a-f]{6}$/i.test(defaultColor) ? defaultColor : "#808080");
+            picker.parentElement.nextElementSibling.disabled = !saved;
+        }
+    }
+}
+
+function llApplyChatFonts(root = embeddedPanel || document) {
+    const style = document.body.style;
+    for (const { key, role, initial, min, max } of LL_CHAT_FONT_FIELDS) {
+        const saved = localStorage.getItem(key);
+        const size = saved === null ? initial : Number(saved);
+        const property = "--ll-chat-" + role + "-size";
+        if (saved === null || size === initial) style.removeProperty(property);
+        else style.setProperty(property, size + "px");
+        const slider = root.querySelector('[data-liuli-chat-font="' + role + '"]');
+        if (!slider) continue;
+        slider.value = size;
+        slider.style.setProperty("--liuli-pct", ((size - min) / (max - min)) * 100 + "%");
+        slider.closest(".liuli-field").querySelector(".liuli-field__value").textContent = size + "px";
+    }
+}
+
+function buildChatFontControls(host) {
+    const group = addSettingsGroup(host, "消息文字层级", "调整聊天正文、昵称和群标签", true);
+    for (const { key, role, label, min, max } of LL_CHAT_FONT_FIELDS) {
+        const hint = role === "body" ? "适用于 TG 和 TIM 的普通消息。" : undefined;
+        const { field, slider } = buildSliderField({ label, min, max, step: 1, hint });
+        slider.dataset.liuliChatFont = role;
+        slider.addEventListener("input", () => {
+            llLocalAppearance(key, slider.value);
+            llApplyChatFonts(host);
+        });
+        slider.addEventListener("change", () => {
+            void llPersistAppearance(key, slider.value);
+        });
+        group.appendChild(field);
+    }
+    llApplyChatFonts(host);
+}
+
+function buildSenderColorControls(host) {
+    const group = addSettingsGroup(host, "昵称颜色", "聊天消息中的发送者昵称");
+    const row = document.createElement("div");
+    row.className = "liuli-wp-fit";
+    const label = document.createElement("span");
+    label.textContent = "发送者昵称";
+    const controls = document.createElement("div");
+    controls.className = "liuli-color-source__inputs";
+    const picker = document.createElement("input");
+    picker.type = "color";
+    picker.dataset.liuliSenderColor = "";
+    picker.setAttribute("aria-label", "发送者昵称颜色");
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.className = "liuli-seg__item";
+    reset.textContent = "恢复默认";
+    picker.addEventListener("change", () => {
+        void llPersistAppearance(LL_SENDER_COLOR_KEY, picker.value);
+        llApplyChatExtras(host);
+    });
+    reset.addEventListener("click", () => {
+        void llPersistAppearance(LL_SENDER_COLOR_KEY, null);
+        llApplyChatExtras(host);
+    });
+    controls.append(picker, reset);
+    row.append(label, controls);
+    group.appendChild(row);
+}
+
+function buildGroupColorControls(host) {
+    const group = addSettingsGroup(host, "群标签颜色", "分别调整群头衔、管理员和群主");
+    for (const { key, role, label } of LL_GROUP_COLORS) {
+        const row = document.createElement("div");
+        row.className = "liuli-wp-fit";
+        const name = document.createElement("span");
+        name.textContent = label;
+        const controls = document.createElement("div");
+        controls.className = "liuli-color-source__inputs";
+        for (const [part, caption] of [["background", "底色"], ["text", "文字"]]) {
+            const storageKey = part === "text" ? key + "-text" : key;
+            const field = document.createElement("label");
+            field.textContent = caption + " ";
+            const picker = document.createElement("input");
+            picker.type = "color";
+            picker.dataset.liuliGroupColor = role;
+            picker.dataset.liuliGroupColorPart = part;
+            picker.setAttribute("aria-label", label + caption);
+            field.appendChild(picker);
+            const reset = document.createElement("button");
+            reset.type = "button";
+            reset.className = "liuli-seg__item";
+            reset.textContent = part === "text" ? "自动" : "默认";
+            reset.setAttribute("aria-label", label + caption + (part === "text" ? "恢复自动" : "恢复默认"));
+            picker.addEventListener("change", () => {
+                void llPersistAppearance(storageKey, picker.value);
+                llApplyChatExtras(host);
+            });
+            reset.addEventListener("click", () => {
+                void llPersistAppearance(storageKey, null);
+                llApplyChatExtras(host);
+            });
+            controls.append(field, reset);
+        }
+        row.append(name, controls);
+        group.appendChild(row);
+    }
+}
+
+function buildColorSourceControls(host) {
+    const group = addSettingsGroup(host, "颜色来源", "壁纸取色与自定义主题色", true);
+    const choices = document.createElement("div");
+    choices.className = "liuli-seg";
+    choices.setAttribute("role", "group");
+    choices.setAttribute("aria-label", "颜色来源");
+    const inputs = document.createElement("div");
+    inputs.className = "liuli-color-source__inputs";
+    const picker = document.createElement("input");
+    picker.type = "color";
+    picker.setAttribute("aria-label", "选择基础颜色");
+    const hex = document.createElement("input");
+    hex.type = "text";
+    hex.maxLength = 7;
+    hex.setAttribute("aria-label", "基础颜色 HEX");
+    const status = document.createElement("span");
+    status.setAttribute("role", "status");
+    inputs.append(picker, hex, status);
+    const buttons = new Map();
+
+    function save(choice) {
+        void llPersistAppearance(LL_COLOR_SOURCE_KEY, JSON.stringify(choice));
+        llColorPageRefresh();
+        window.__liuliPaletteApplied = false;
+        void applyDynamicPalette();
+    }
+
+    for (const [mode, label] of [["wallpaper", "壁纸取色"], ["custom", "自定义颜色"]]) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "liuli-seg__item";
+        button.textContent = label;
+        button.addEventListener("click", () => {
+            const choice = llColorSource();
+            if (choice.mode !== mode) save({ ...choice, mode });
+        });
+        choices.appendChild(button);
+        buttons.set(mode, button);
+    }
+    function commitHex(raw) {
+        const value = "#" + raw.trim().replace(/^#/, "").toUpperCase();
+        if (!/^#[0-9A-F]{6}$/.test(value)) {
+            hex.setAttribute("aria-invalid", "true");
+            status.textContent = "请输入六位 HEX 色值";
+            return;
+        }
+        const choice = llColorSource();
+        if (choice.hex !== value) save({ ...choice, hex: value });
+        else llColorPageRefresh();
+    }
+    hex.addEventListener("change", () => commitHex(hex.value));
+    hex.addEventListener("keydown", event => {
+        if (event.key === "Enter") commitHex(hex.value);
+    });
+    picker.addEventListener("change", () => commitHex(picker.value));
+
+    const preview = document.createElement("div");
+    preview.className = "liuli-color-preview";
+    const source = document.createElement("div");
+    source.className = "liuli-field__hint";
+    for (const [label, background, foreground] of [
+        ["强调色", "var(--ll-brand)", "--ll-on-brand"],
+        ["选中底色", null, "--ll-contact-selected-ink"],
+        ["次色底色", "var(--ll-secondary-container)", "--ll-on-secondary-container"],
+        ["第三色底色", "var(--ll-tertiary-container)", "--ll-on-tertiary-container"],
+        ["页面背景", "var(--ll-app-bg)", "--ll-on-glass"],
+        ["中性表面", "rgb(var(--ll-acrylic))", "--ll-on-glass"],
+        ["自己的气泡", "var(--ll-bubble-self)", "--ll-bubble-self-fg"],
+        ["对方的气泡", "var(--ll-bubble-other, rgba(var(--ll-acrylic), 0.86))", "--ll-bubble-other-fg, var(--ll-on-glass)"]
+    ]) {
+        const item = document.createElement("div");
+        const sample = document.createElement("div");
+        sample.className = "liuli-color-preview__sample";
+        sample.textContent = "Aa";
+        if (background) sample.style.background = background;
+        else sample.classList.add("liuli-color-preview__sample--selection");
+        sample.style.color = "var(" + foreground + ")";
+        const caption = document.createElement("span");
+        caption.textContent = label;
+        item.append(sample, caption);
+        preview.appendChild(item);
+    }
+    group.append(choices, inputs, source, preview);
+    llColorPageRefresh = () => {
+        const choice = llColorSource();
+        for (const [mode, button] of buttons) {
+            const active = choice.mode === mode;
+            button.classList.toggle("is-active", active);
+            button.setAttribute("aria-pressed", String(active));
+        }
+        inputs.hidden = choice.mode !== "custom";
+        picker.value = choice.hex;
+        if (document.activeElement !== hex || hex.value.toUpperCase().replace(/^#/, "") === choice.hex.slice(1)) {
+            hex.value = choice.hex;
+            hex.removeAttribute("aria-invalid");
+            status.textContent = "";
+        }
+        source.textContent = "基础色 " + (document.body.dataset.liuliSource || DEFAULT_SOURCE).toUpperCase();
+    };
+    llColorPageRefresh();
+}
+
 function buildPanelContent(host, settings) {
     host.innerHTML = "";
     llVeilSegRefreshers = [];
@@ -3475,30 +4002,13 @@ function buildPanelContent(host, settings) {
     const pageText = tabs.pages.text;
     const pageDiag = tabs.pages.diag;
 
-    const info = document.createElement("div");
-    info.className = "liuli-info";
-    const swatch = document.createElement("div");
-    swatch.className = "liuli-swatch";
-    const infoText = document.createElement("span");
-    info.appendChild(swatch);
-    info.appendChild(infoText);
-    /* 取色信息条属于「配色」页：它显示的就是壁纸取色 → 品牌色这条链路的结果 */
-    pageColor.appendChild(info);
+    buildColorSourceControls(pageColor);
     /* 「主题」分组：明暗模式（跟随 QQ / 亮色 / 暗色） */
     const themeGroup = document.createElement("div");
     themeGroup.className = "liuli-panel__group";
     themeGroup.textContent = "主题";
     pageLook.appendChild(themeGroup);
     buildModeControls(pageLook);
-    const refreshInfo = () => {
-        const src = document.body.dataset.liuliSource || DEFAULT_SOURCE;
-        const brand = getComputedStyle(document.body).getPropertyValue("--ll-brand").trim();
-        swatch.style.background = brand || src;
-        infoText.textContent = "壁纸取色 " + src + " → 品牌 " + brand;
-    };
-    refreshInfo();
-    setInterval(refreshInfo, 3000);
-
     const group = document.createElement("div");
     group.className = "liuli-panel__group";
     group.textContent = "材质";
@@ -3539,25 +4049,42 @@ function buildPanelContent(host, settings) {
     buildChatBackdropControls(pageLook);
 
     /* ── 其余各页：原有分组函数原样调用，只是容器从 host 换成对应页 ── */
-    buildRoleControls(pageColor, function (roles) {
+    llRoleControlsRefresh = buildRoleControls(pageColor, function (roles) {
         void llPersistAppearance(ROLE_KEY, JSON.stringify(roles));
         window.__liuliPaletteApplied = false;
         applyDynamicPalette();
     });
+    buildSenderColorControls(pageColor);
+    buildGroupColorControls(pageColor);
     buildWallpaperControls(pageWp);      // 壁纸选择 / 裁剪适应 / 壁纸亮度提示
-    const chatGroup = document.createElement("div");
-    chatGroup.className = "liuli-panel__group";
-    chatGroup.textContent = "聊天消息";
-    pageLayout.appendChild(chatGroup);
-    buildAppearanceChoice(pageLayout, "聊天气泡", LL_CHAT_STYLES, "liuliChatStyleOption", LL_CHAT_STYLE_KEY, llApplyChatStyle);
+    const chatGroup = addSettingsGroup(pageLayout, "聊天消息", "气泡样式", true);
+    buildAppearanceChoice(chatGroup, "聊天气泡", LL_CHAT_STYLES, "liuliChatStyleOption", LL_CHAT_STYLE_KEY, llApplyChatStyle);
+    buildBubbleSizeControls(chatGroup);
+    buildAppearanceChoice(chatGroup, "隐藏 TG 纯图片昵称", [["0", "关闭"], ["1", "开启"]],
+        "liuliHideImageNamesOption", LL_HIDE_IMAGE_NAMES_KEY, llApplyChatStyle);
     llApplyChatStyle(host);
-    buildLayoutSection(pageLayout);      // layout-custom.js 的全部分组
+    const inputGroup = addSettingsGroup(pageLayout, "输入框", "切换 TG 与 QQ 原版输入布局");
+    buildAppearanceChoice(inputGroup, "输入框布局", [["tg", "TG"], ["native", "原版"]],
+        "liuliInputLayoutOption", LL_INPUT_LAYOUT_KEY, llApplyInputLayout);
+    buildLayoutSection(pageLayout);
+    llApplyInputLayout(host);
+    const listGroup = addSettingsGroup(pageLayout, "会话列表", "置顶分组、选中底色与空会话显示");
+    buildAppearanceChoice(listGroup, "置顶会话单独成组", [["0", "关闭"], ["1", "开启"]],
+        "liuliPinGroupOption", LL_PIN_GROUP_KEY, llApplyPinGroups);
+    buildAppearanceChoice(listGroup, "置顶分组使用强调色", [["0", "关闭"], ["1", "开启"]],
+        "liuliPinColorOption", LL_PIN_COLOR_KEY, llApplyPinGroups);
+    llApplyPinGroups(host);
+    buildSelectionStrengthControl(listGroup);
+    buildAppearanceChoice(listGroup, "隐藏空会话的 QQ 图标", [["0", "关闭"], ["1", "开启"]],
+        "liuliHideEmptyLogoOption", LL_HIDE_EMPTY_LOGO_KEY, llApplyChatExtras);
+    llApplyChatExtras(host);
     const textGroup = document.createElement("div");
     textGroup.className = "liuli-panel__group";
     textGroup.textContent = "文字";
     pageText.appendChild(textGroup);
     buildMarkdownControls(pageText);
     buildFontControls(pageText);
+    buildChatFontControls(pageText);
     buildDiagSection(pageDiag);   // 契约 3.5：诊断小节放在「恢复默认」之前
 
     /* 「恢复默认」只把材质 / 遮罩打回默认值，放在外观页末尾 */
@@ -3594,6 +4121,9 @@ function buildPanelContent(host, settings) {
         const ok = await llResetAll();
         llApplyMaterial();
         llApplyChatStyle();
+        llApplyBubbleSize();
+        llApplyChatExtras();
+        llApplyPinGroups();
         llApplyChatBackdrop();
         Object.assign(settings, DEFAULT_SETTINGS);
         for (const f of FIELDS) {
@@ -3660,6 +4190,10 @@ async function initPanel() {
     llApplyMaterial();
     llApplyChatBackdrop();
     llApplyChatStyle();
+    llApplyInputLayout();
+    llApplyBubbleSize();
+    llApplyChatExtras();
+    llApplyPinGroups();
     llSubscribeAppearance();
     // 先恢复壁纸文件，再取色/绘制/读取界面状态，避免启动时拿到空 localStorage。
     try { await llWallpaperLoadDisk(true); }
@@ -3696,7 +4230,7 @@ async function initPanel() {
         fixContrast();
         normalizeColors();
         setInterval(() => { if (window.__liuliPause) return; if (performance.now() - (window.__llScrollT || 0) < 600) return; /* 正在滚动：这一轮跳过，免得滚动中卡一下 */ if (document.querySelector(".q-dialog-modal")) { mountInputBar(); return; } applyOverrides(); fixContrast(); normalizeColors(); keepWindowControlsVisible(); mountInputBar(); liuliMessagePass(); ensureHoverEntries(); llWatchContactList(); llGroupMembersPass(); llMarkdownPass(); llLayoutPass(); }, 1500);
-        try { installLayout(function () { llSyncPins(); }); } catch (e) { console.warn("[liuli-dsh-theme] layout failed:", e && e.message); }
+        try { installLayout(function (bar) { llSyncPins(null, bar); }); } catch (e) { console.warn("[liuli-dsh-theme] layout failed:", e && e.message); }
         try { installArkExternal(window.liuli_api); } catch (e) { console.warn("[liuli-dsh-theme] ark external failed:", e && e.message); }
         installMarkdownObserver();
         installAvatarStick();

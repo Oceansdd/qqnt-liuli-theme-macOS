@@ -261,3 +261,19 @@ body[data-hash="#/main-profile"] .profile__body > .buddy-profile > :last-child:n
     -webkit-backdrop-filter: none !important;
   }
 }
+
+#liuli-input-overlay {
+  translate: 0 -2px;
+}
+#liuli-bar-pins .liuli-bar-btn.liuli-bar-btn--right {
+  position: absolute !important;
+  right: 0;
+  bottom: 0;
+}
+
+/* 窄主窗打开独立会话时，焦点可能把横向溢出的双栏容器卷离固定导航。 */
+@media (max-width: 450px) {
+  body[data-liuli-nav-pin][data-liuli-scope="main"] .container-content > .message-panel.container-content-view:not(#ll) {
+    overflow: clip !important;
+  }
+}
