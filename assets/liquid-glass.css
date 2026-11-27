@@ -158,6 +158,11 @@ body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):
   color: var(--ll-on-glass) !important;
 }
 
+/* 保持 QQ 的交互填色与加号按钮使用同一轮廓。 */
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .contact-top-bar .contact-adder-btn:is(:hover, :active)::after {
+  border-radius: inherit !important;
+}
+
 /* 联系人与会话列表共享承载卡片材质。 */
 body:is([data-liuli-scope="main"], [data-liuli-scope="aux"]:has(.chat-msg-area):not([data-hash^="#/av"]))[data-liuli-liquid-glass] .contact-layout .contact-layout__left-area > .contact:not(#ll) {
   background: var(--ll-liquid-sheen), rgba(var(--ll-acrylic), var(--ll-material-opacity)) !important;
@@ -352,6 +357,14 @@ body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass
   border: 1px solid transparent !important;
   border-radius: 999px !important;
   box-shadow: var(--ll-liquid-control-shadow) !important;
+}
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass][data-liuli-window-focused] .main-search .q-search__input:not(#ll):not(#ll) {
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / calc(0.10 + 0.12 * var(--ll-gloss-strength, 0.15))),
+    0 4px 14px var(--ll-liquid-depth) !important;
+}
+body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass][data-liuli-window-focused][data-liuli-dark="0"] .main-search .q-search__input:not(#ll):not(#ll) {
+  box-shadow: inset 0 0 0 1px rgba(var(--ll-on-glass-rgb), calc(0.12 + 0.12 * var(--ll-gloss-strength, 0.15))),
+    0 3px 10px var(--ll-liquid-depth) !important;
 }
 body:is([data-liuli-scope="main"], [data-hash="#/chat"])[data-liuli-liquid-glass] .main-search .q-search__input > input {
   background: transparent !important;
